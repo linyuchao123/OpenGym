@@ -45,7 +45,7 @@
 
 https://github.com/user-attachments/assets/4fab8651-fef5-4047-8863-2f09e524f3d1
 
-约 **57 秒 / 1080 × 1920 / 8 MB**。如果没有声音，请检查播放器是否静音及设备音量。
+约 **57 秒 / 1080 × 1920 / 8 MB**。GitHub 播放器初始为静音，点击右下方的 **扬声器图标** 取消静音，即可听到解说和配乐；同时请确认设备音量。
 
 [打开视频附件](https://github.com/user-attachments/assets/4fab8651-fef5-4047-8863-2f09e524f3d1) · [下载 MP4](https://github.com/linyuchao123/OpenGym/raw/refs/heads/main/docs/media/opengym-demo.mp4) · [仓库中的原始视频](docs/media/opengym-demo.mp4)
 
