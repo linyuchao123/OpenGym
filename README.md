@@ -41,14 +41,15 @@
 
 ## 57 秒了解这个版本
 
-<div align="center">
-<a href="docs/media/opengym-demo.mp4"><img src="docs/media/demo-cover.jpg" alt="点击观看 OpenGym 功能演示视频" width="260"></a>
+点击下方播放器的 **▶ 播放按钮**，即可在线观看；视频包含 **合成解说与背景配乐**，可调节音量、拖动进度或全屏观看。
 
-**点击封面观看视频预览** · [打开演示视频](docs/media/opengym-demo.mp4) · [下载 MP4](https://github.com/linyuchao123/OpenGym/raw/refs/heads/main/docs/media/opengym-demo.mp4)
+https://github.com/user-attachments/assets/4fab8651-fef5-4047-8863-2f09e524f3d1
 
-</div>
+约 **57 秒 / 1080 × 1920 / 8 MB**。如果没有声音，请检查播放器是否静音及设备音量。
 
-视频随源码保存在仓库中，约 **57 秒 / 1080 × 1920 / 8 MB**，使用合成配音。GitHub README 的内嵌视频显示因客户端而异，点击封面可进入视频文件页预览或下载。
+[打开视频附件](https://github.com/user-attachments/assets/4fab8651-fef5-4047-8863-2f09e524f3d1) · [下载 MP4](https://github.com/linyuchao123/OpenGym/raw/refs/heads/main/docs/media/opengym-demo.mp4) · [仓库中的原始视频](docs/media/opengym-demo.mp4)
+
+演示画面基于功能截图制作，配音为合成声音。完整 MP4 同时保存在仓库中，方便下载和离线观看。
 
 ## 相较原版，新增与改进了什么
 
