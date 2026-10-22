@@ -1,0 +1,2 @@
+export const HOME_CARDS=[['overview','今日概览'],['calendar','日历与今日训练'],['heatmap','训练热力图'],['progress','本周进度'],['checkin','健身房签到'],['welcome','入门引导'],['weight','体重趋势'],['milestones','进步里程碑']]
+export function homeLayout(input){const out=[];for(const x of Array.isArray(input)?input:[]){if(HOME_CARDS.some(([id])=>id===x?.id)&&!out.some(y=>y.id===x.id))out.push({id:x.id,show:x.show!==false})}for(const [id] of HOME_CARDS)if(!out.some(x=>x.id===id))out.push({id,show:true});return out}

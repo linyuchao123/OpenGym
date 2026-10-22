@@ -1,0 +1,58 @@
+# Exercise media downloaded by installs before v1.4.0 (now in catalogue/media); kept ignored so an
+# old folder never gets committed by accident
+media/img/
+media/gif/
+
+# Runtime data — users, passkeys, per-user state, session secret
+data/
+
+# Local config
+.env
+.env.zh
+.local-data/
+
+# Build output / deps
+frontend/dist/
+node_modules/
+*.log
+.DS_Store
+node_modules
+.claude/
+.agents/
+.superpowers/
+
+# Nix build result symlinks
+result
+result-*
+
+# CI reports (test:* jobs write these next to the suites)
+junit.xml
+coverage/
+frontend/bundle-size.json
+
+# Local planning notes
+docs/superpowers/plans/
+
+# Backend-only image recognition credentials
+.env.ai.local
+
+# Cloudflare local credentials, runtime state and build output
+cloudflare/node_modules/
+cloudflare/.wrangler/
+cloudflare/.dev.vars
+cloudflare/dist-worker/
+cloudflare/wrangler.local.jsonc
+
+cloudflare/.secrets-upload.json
+cloudflare/.bootstrap.local
+
+# Private deployment configuration and backups
+.env.*
+!.env.*.example
+cloudflare/.dev.vars*
+!cloudflare/.dev.vars.example
+*.sqlite
+*.sqlite3
+*.db
+*.backup
+backups/

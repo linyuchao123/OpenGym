@@ -1,0 +1,17 @@
+**/node_modules
+frontend/dist
+media
+data
+.env
+.git
+*.log
+
+.env.ai.local
+.env.zh
+.local-data
+
+cloudflare/.secrets-upload.json
+cloudflare/.bootstrap.local
+cloudflare/.dev.vars
+cloudflare/.wrangler
+cloudflare/dist-worker

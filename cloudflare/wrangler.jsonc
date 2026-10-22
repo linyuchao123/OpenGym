@@ -1,0 +1,59 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "opengym-community",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-10-18",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "workers_dev": false,
+  "assets": {
+    "directory": "../frontend/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*",
+      "/exercise-media/clip/*",
+      "/music/*"
+    ]
+  },
+  "routes": [
+    {
+      "pattern": "gym.example.com",
+      "custom_domain": true
+    }
+  ],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "opengym",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "vars": {
+    "ORIGIN": "https://gym.example.com",
+    "RP_ID": "gym.example.com",
+    "INVITE_ONLY": "1",
+    "ALLOW_GUEST": "0",
+    "MEDIA_STORE": "r2",
+    "SITE_MEDIA_LIMIT_MB": "8192",
+    "USER_MEDIA_LIMIT_MB": "1024",
+    "FOOD_AI_MODEL": "deepseek-flash",
+    "FOOD_AI_BASE_URL": "https://api.deepseek.com"
+  },
+  "observability": {
+    "enabled": false
+  },
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "opengym-media"
+    }
+  ],
+  "triggers": {
+    "crons": [
+      "0 * * * *"
+    ]
+  }
+}

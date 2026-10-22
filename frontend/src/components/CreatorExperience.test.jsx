@@ -1,0 +1,33 @@
+// @vitest-environment happy-dom
+import React,{act} from 'react'
+import {createRoot} from 'react-dom/client'
+import {MemoryRouter} from 'react-router-dom'
+import {beforeEach,afterEach,it,expect,vi} from 'vitest'
+import {api} from '../lib/api.js'
+import {useStore} from '../store/useStore.js'
+import {clearCommunity} from '../lib/community-cache.js'
+import PostComposer from './PostComposer.jsx'
+import CommentPanel from './CommentPanel.jsx'
+import {PostFeed} from '../views/Community.jsx'
+import PersonalTools from '../views/PersonalTools.jsx'
+vi.mock('../lib/api.js',()=>({api:vi.fn(),appBase:()=>'/'}))
+let host,root
+const user={id:'a',name:'我',admin:true},post={id:'p',uid:'b',author:{id:'b',nickname:'伙伴',following:false},text:'测试日常',media:[],comments:[],commentCount:1,likeCount:0,tags:[]},comment={id:'c',uid:'b',author:{id:'b',nickname:'伙伴'},text:'加油',createdAt:1,likeCount:0,liked:false,replyCount:0,canDelete:false}
+globalThis.IS_REACT_ACT_ENVIRONMENT=true
+beforeEach(()=>{sessionStorage.clear();localStorage.clear();clearCommunity();host=document.createElement('div');document.body.append(host);root=createRoot(host);useStore.setState({user,config:{media:{videoMB:2}}});vi.stubGlobal('IntersectionObserver',class{observe(){}disconnect(){}});api.mockImplementation(async url=>url.includes('/comments?')?{items:[comment],total:1,next:null}:url.includes('/music')?{tracks:[{id:'momentum',title:'向前一步',artist:'openGym 原创',style:'力量',duration:24,url:'/music/momentum.mp3'}]}:{posts:[post],next:null})})
+afterEach(()=>{act(()=>root.unmount());host.remove();vi.unstubAllGlobals();vi.clearAllMocks()})
+const mount=async node=>act(async()=>{root.render(<MemoryRouter>{node}</MemoryRouter>);await new Promise(r=>setTimeout(r,0))})
+const click=async name=>act(async()=>{const el=[...document.querySelectorAll('button')].find(e=>e.getAttribute('aria-label')===name||e.textContent===name);if(!el)throw Error('Missing '+name);el.click();await new Promise(r=>setTimeout(r,0))})
+const fill=async(el,value)=>act(async()=>{const setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;setter.call(el,value);el.dispatchEvent(new Event('input',{bubbles:true}));el.dispatchEvent(new Event('change',{bubbles:true}))})
+it('comments open without keyboard autofocus, can expand and select a reply',async()=>{await mount(<CommentPanel post={post} user={user} onUpdate={()=>{}}/>);expect(host.textContent).toContain('加油');expect(host.querySelector('input').hasAttribute('autofocus')).toBe(false);expect(document.activeElement).not.toBe(host.querySelector('input'));await click('展开评论区');expect(host.querySelector('[aria-label="收起评论区"]')).toBeTruthy();await click('回复');expect(host.textContent).toContain('回复 @伙伴');expect(document.activeElement).toBe(host.querySelector('input'))})
+it('comment like uses only comment action and never reloads feed',async()=>{const update=vi.fn();await mount(<CommentPanel post={post} user={user} onUpdate={update}/>);api.mockResolvedValue({comment:{...comment,liked:true,likeCount:1},post:{...post,commentCount:1}});await click('点赞评论 伙伴');expect(api.mock.calls.filter(([u])=>u==='/api/life/comment/react')).toHaveLength(1);expect(api.mock.calls.some(([u])=>u.includes('/feed'))).toBe(false);expect(update).toHaveBeenCalled()})
+it('failed comment retries reuse clientId and preserve draft',async()=>{await mount(<CommentPanel post={post} user={user} onUpdate={()=>{}}/>);await fill(host.querySelector('input'),'继续加油');api.mockRejectedValue(Error('网络中断'));const submit=async()=>act(async()=>host.querySelector('form').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})));await submit();await submit();const sends=api.mock.calls.filter(([u])=>u==='/api/life/comment');expect(sends).toHaveLength(2);expect(JSON.parse(sends[0][1].body).clientId).toBe(JSON.parse(sends[1][1].body).clientId);expect(host.querySelector('input').value).toBe('继续加油')})
+it('composer restores only the signed-in account draft and selects real music metadata',async()=>{sessionStorage.setItem('gym-creator-draft:a',JSON.stringify({text:'我的草稿',media:[]}));sessionStorage.setItem('gym-creator-draft:b',JSON.stringify({text:'别人的草稿'}));await mount(<PostComposer user={user} onClose={()=>{}} onPublished={()=>{}}/>);await click('下一步');await click('♫ 选择配乐');expect(host.textContent).toContain('向前一步');await click('使用');expect(JSON.parse(sessionStorage.getItem('gym-creator-draft:a')).music.trackId).toBe('momentum');await click('下一步');expect(host.querySelector('textarea').value).toBe('我的草稿');expect(host.textContent).not.toContain('别人的草稿')})
+it('post likes update in place without a feed request',async()=>{await mount(<PostFeed/>);const before=api.mock.calls.filter(([u])=>u.startsWith('/api/life/feed')).length;api.mockResolvedValue({post:{...post,liked:true,likeCount:1}});await click('点赞');expect(api.mock.calls.filter(([u])=>u.startsWith('/api/life/feed'))).toHaveLength(before);expect(host.querySelector('[aria-label="点赞"]').getAttribute('aria-pressed')).toBe('true')})
+it('failed optimistic post likes roll back without moving the feed',async()=>{await mount(<PostFeed/>);api.mockRejectedValue(Error('网络中断'));await click('点赞');expect(host.querySelector('[aria-label="点赞"]').getAttribute('aria-pressed')).toBe('false');expect(host.textContent).toContain('网络中断')})
+it('immersive feed keeps distant posts as lightweight placeholders',async()=>{api.mockResolvedValue({posts:Array.from({length:20},(_,i)=>({...post,id:'p'+i})),next:null});await mount(<PostFeed/>);expect(host.querySelectorAll('.immersive-actions')).toHaveLength(3);expect(host.querySelectorAll('.post-placeholder')).toHaveLength(17)})
+it('platform management entry is exclusive to administrators',async()=>{await mount(<PersonalTools account/>);expect(host.textContent).toContain('平台管理');act(()=>useStore.setState({user:{...user,admin:false}}));expect(host.textContent).not.toContain('平台管理')})
+
+it('composer stays open when StrictMode replays effects',async()=>{const close=vi.fn();await mount(<React.StrictMode><PostComposer user={user} onClose={close} onPublished={()=>{}}/></React.StrictMode>);await act(async()=>new Promise(r=>setTimeout(r,20)));expect(close).not.toHaveBeenCalled();expect(host.querySelector('[role=dialog]')).toBeTruthy()})
+
+it('music audition starts from the user gesture rather than only selecting a URL',async()=>{await mount(<PostComposer user={user} onClose={()=>{}} onPublished={()=>{}}/>);await click('下一步');await click('♫ 选择配乐');const play=vi.spyOn(HTMLMediaElement.prototype,'play').mockResolvedValue();await click('试听');expect(play).toHaveBeenCalledOnce();expect(host.querySelector('audio[controls]').getAttribute('src')).toBe('/music/momentum.mp3');play.mockRestore()})

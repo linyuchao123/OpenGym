@@ -1,0 +1,5 @@
+import {bmiReading,latestBody} from '../../../api/shared/body-profile.js'
+import {useLifestyle} from '../lib/lifestyle.js'
+import {useStore} from '../store/useStore.js'
+export function BodyFacts({person}){return <div className="body-facts">{person.personality&&<span>{person.personality}</span>}{person.heightCm&&<span>{person.heightCm} cm</span>}{person.weightKg&&<span>{person.weightKg} kg</span>}{person.bmi&&<span>BMI {person.bmi}</span>}</div>}
+export default function BodySummary({profile:given,state:givenState,short=false}){const own=useLifestyle(s=>s.profile),S=useStore(s=>s.S),profile=given||own,state=givenState||S,b=latestBody(profile,state),r=bmiReading(b.heightCm,b.weightKg,b.bodyContext);if(!r)return null;return <div className="body-summary"><strong>BMI {r.bmi} <small>· {r.label}</small></strong>{!short&&<p>{r.advice}</p>}<small>身高 {b.heightCm} cm · 体重 {b.weightKg} kg · {Object.values(profile.visibility||{}).some(Boolean)?'已开启部分资料展示':'身体资料未向伙伴展示'}</small>{!short&&<a className="bmi-source" href="https://www.nhc.gov.cn/xcs/c100122/202503/27b26d397f4941ff8ff3846ef40026ee.shtml" target="_blank" rel="noreferrer">成人BMI参考说明</a>}</div>}

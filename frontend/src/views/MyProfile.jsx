@@ -1,0 +1,46 @@
+import ProfileBio from '../components/ProfileBio.jsx'
+import UnreadBadge from '../components/UnreadBadge.jsx'
+import BodySummary,{BodyFacts} from '../components/BodySummary.jsx'
+import {latestBody} from '../../../api/shared/body-profile.js'
+import {todayISO} from '../lib/format.js'
+import {useSearchParams} from 'react-router-dom'
+import {api} from '../lib/api.js'
+import {useOriginNavigate as useNavigate, ReturnButton, useReturn, useModalHistory} from '../lib/route-origin.jsx'
+import { useState, useEffect } from 'react'
+import { useLifestyle, imageBlob, dataURL } from '../lib/lifestyle.js'
+import { useStore } from '../store/useStore.js'
+import Avatar from '../components/Avatar.jsx'
+import Icon from '../components/Icon.jsx'
+import {WelcomeFriend} from './InviteFriends.jsx'
+import { PostFeed } from './Community.jsx'
+import {useVisiblePoll} from '../lib/use-visible-poll.js'
+
+export default function MyProfile() {
+  const nav=useNavigate()
+  const { profile,profileBackup,loading,error,saveProfile }=useLifestyle()
+  const user=useStore(s=>s.user),S=useStore(s=>s.S)
+  const [draft,setDraft]=useState(null)
+  const [busy,setBusy]=useState(false)
+  const [message,setMessage]=useState('')
+  const [query,setQuery]=useSearchParams(),tab=query.get('tab')==='saved'?'saved':'works'
+  const [person,setPerson]=useState(null)
+  useEffect(()=>{setPerson(null)},[user?.id])
+  useVisiblePoll(async alive=>{if(!user)return;const d=await api('/api/life/people?id='+encodeURIComponent(user.id));if(alive())setPerson(d.person)},30000,[user?.id,profile.updatedAt])
+  useModalHistory(!!draft,()=>setDraft(null),busy)
+  const edit=(backup=false)=>{if(loading){setMessage('正在读取已保存的资料，请稍候再编辑。');return}const source=backup===true?profileBackup:profile;setDraft({baseProfileVersion:profile.version??profile.updatedAt??0,...latestBody(source,S),personality:source.personality||'',visibility:source.visibility||{},nickname:source.nickname||user?.name||'',bio:source.bio||'',goal:source.goal||'',fitnessGoal:source.fitnessGoal||'habit',publicAchievements:source.publicAchievements||'',calorieGoal:source.calorieGoal||'',avatar:source.avatar||''});setMessage('')}
+  const photo=async e=>{const file=e.target.files?.[0];e.target.value='';if(!file)return;setBusy(true);try{const avatar=await dataURL(await imageBlob(file,{avatar:true}));setDraft(d=>({...d,avatar}))}catch(e){setMessage(e.message)}finally{setBusy(false)}}
+  const save=async e=>{e.preventDefault();setBusy(true);setMessage('');try{const changed=Number(draft.weightKg)!==Number(profile.weightKg)||Number(draft.heightCm)!==Number(profile.heightCm),stamp=changed?Date.now():profile.bodyUpdatedAt||Date.now();await saveProfile({...draft,bodyUpdatedAt:stamp,nickname:draft.nickname.trim()||user?.name||'健身伙伴',calorieGoal:Number(draft.calorieGoal)||0});if(draft.weightKg){const weight=Number(draft.weightKg)/(S.unit==='lb'?.45359237:1),date=todayISO();useStore.getState().update(st=>{const old=st.bodyweight.find(x=>x.d===date);if(old){if(Math.abs(old.w-weight)>.001){old.w=weight;old.t=stamp}}else st.bodyweight.push({d:date,w:weight,t:stamp});st.bodyweight.sort((a,b)=>a.d.localeCompare(b.d))})}setDraft(null);setMessage('资料已保存，首页体重与BMI已同步。')}catch(e){setMessage(e.message)}finally{setBusy(false)}}
+  return <div className="narrow life-page profile-page"><header className="hdr"><h1>我的</h1><button className="life-icon" aria-label="设置与数据" onClick={()=>nav('/me/settings')}><Icon name="gear"/></button></header>
+    <section className="profile-identity"><button className="life-avatar-edit" aria-label="编辑个人资料与头像" disabled={loading} onClick={edit}><Avatar size={82}/><span><Icon name="camera"/></span></button><div><h2>{profile.nickname||user?.name||'我的健身档案'}</h2><ProfileBio text={profile.bio} fallback={loading?'正在读取已保存的资料…':'记录自己的健身故事。'}/><button className="life-secondary" disabled={loading} onClick={edit}>编辑资料</button></div></section>
+    {!loading&&profileBackup&&['avatar','bio','heightCm','personality'].filter(k=>profileBackup[k]).length>['avatar','bio','heightCm','personality'].filter(k=>profile[k]).length&&<p className="life-notice">本机保留了一份较完整的资料。<button className="life-link" disabled={loading} onClick={()=>edit(true)}>检查并恢复资料</button>确认保存前不会修改服务器记录。</p>}
+    <BodyFacts person={profile}/><details className="profile-body-details"><summary>我的身体资料与BMI <small>按公开设置展示</small></summary><BodySummary/></details><div className="profile-social-counts"><span><strong>{person?.postCount||0}</strong>作品</span><button onClick={()=>nav('/members?relation=following')}><strong>{person?.followingCount||0}</strong>关注</button><button onClick={()=>nav('/members?relation=followers')}><strong>{person?.followers||0}</strong>粉丝</button></div>
+    {user&&<WelcomeFriend/>}{(message||error)&&<p className={error?'life-error':'life-notice'} role="status">{message||error}</p>}
+    <nav className="profile-shortcuts" aria-label="个人功能"><button onClick={()=>nav('/me/tools')}><Icon name="dumbbell"/><span>健身工具</span><small>计划、记录与进步</small></button><button onClick={()=>nav('/notifications')}><span className="badge-anchor"><Icon name="message"/><UnreadBadge/></span><span>消息中心</span><small>互动与私信</small></button><button onClick={()=>nav('/me/settings')}><Icon name="gear"/><span>设置与数据</span><small>首页、账号与备份</small></button></nav>
+    <div className="profile-tabs" role="tablist" aria-label="我的内容"><button role="tab" aria-selected={tab==='works'} onClick={()=>setQuery({tab:'works'},{replace:true})}>作品</button><button role="tab" aria-selected={tab==='saved'} onClick={()=>setQuery({tab:'saved'},{replace:true})}>收藏 <small>仅自己可见</small></button></div>
+    {user?<PostFeed key={tab} mine={tab==='works'} saved={tab==='saved'} grid/>:<p className="card life-empty">登录后发布日常，和朋友一起留下进步。</p>}
+    {draft&&<div className="life-modal-backdrop"><section className="life-modal" role="dialog" aria-modal="true" aria-label="编辑个人资料"><div className="life-section-head"><h2>编辑资料</h2><button className="life-icon" disabled={busy} aria-label="关闭资料编辑" onClick={()=>setDraft(null)}><Icon name="x"/></button></div>
+      <form className="life-form" onSubmit={save}><div className="life-edit-avatar"><Avatar person={draft} size={88}/><label className="life-upload-button">上传头像<input type="file" accept="image/*" disabled={busy} onChange={photo}/></label>{draft.avatar&&<button type="button" className="life-link" onClick={()=>setDraft(d=>({...d,avatar:''}))}>移除头像</button>}<p className="small muted">自动居中裁成正方形；首页和社区使用同一头像。</p></div>
+      <label>昵称<input required maxLength={30} value={draft.nickname} onChange={e=>setDraft(d=>({...d,nickname:e.target.value}))}/></label><label>个人介绍<textarea maxLength={180} rows={3} placeholder="例如：记录增肌的每一天" value={draft.bio} onChange={e=>setDraft(d=>({...d,bio:e.target.value}))}/></label><fieldset className="body-profile-fields"><legend>身体与性格资料（均可选）</legend><label>性格 / MBTI / 一句话性格<input maxLength={60} placeholder="例如：慢热、喜欢一起训练 / INFP" value={draft.personality} onChange={e=>setDraft(d=>({...d,personality:e.target.value}))}/></label><div className="life-form-row"><label>身高（cm）<input type="number" min="100" max="250" step=".1" value={draft.heightCm??''} onChange={e=>setDraft(d=>({...d,heightCm:e.target.value}))}/></label><label>当前体重（kg）<input type="number" min="25" max="350" step=".1" value={draft.weightKg??''} onChange={e=>setDraft(d=>({...d,weightKg:e.target.value}))}/></label></div><label>BMI参考适用情况<select value={draft.bodyContext} onChange={e=>setDraft(d=>({...d,bodyContext:e.target.value}))}><option value="unspecified">暂不使用成人分段</option><option value="adult">18岁及以上、非孕期</option><option value="other">未成年、孕期或其他情况</option></select></label><BodySummary profile={draft} state={{}}/><p className="small muted">身高、体重默认私密；保存体重后同步至首页称重记录。BMI仅作筛查参考，不能判断体脂。</p><p>选择在伙伴主页展示的资料</p>{[['personality','性格'],['height','身高'],['weight','体重'],['bmi','BMI']].map(([k,n])=><label className="life-check" key={k}><input type="checkbox" checked={!!draft.visibility[k]} onChange={e=>setDraft(d=>({...d,visibility:{...d.visibility,[k]:e.target.checked}}))}/>展示{n}</label>)}</fieldset><label>当前健身目标<input maxLength={40} placeholder="例如：稳定训练、增肌、提升力量" value={draft.goal} onChange={e=>setDraft(d=>({...d,goal:e.target.value}))}/></label><label>饮食建议参考目标<select value={draft.fitnessGoal} onChange={e=>setDraft(d=>({...d,fitnessGoal:e.target.value}))}>{Object.entries({habit:'建立记录习惯',gain:'增肌',loss:'减脂',maintain:'维持'}).map(([v,n])=><option key={v} value={v}>{n}</option>)}</select></label><label>愿意公开的成就（可留空）<input maxLength={160} value={draft.publicAchievements} placeholder="例如：第一次完成十次训练" onChange={e=>setDraft(d=>({...d,publicAchievements:e.target.value}))}/></label><p className="small muted">这段成就会公开给站内成员。身体资料按上方开关展示，训练和饮食明细不自动公开。</p><label>自定每日热量目标（kcal，可留空）<input type="number" min="0" max="15000" step="any" value={draft.calorieGoal} onChange={e=>setDraft(d=>({...d,calorieGoal:e.target.value}))}/></label><p className="small muted">这是你自己设置的记录目标，不会自动推算或替你决定饮食量。</p>{message&&<p className="life-error" role="alert">{message}</p>}<button className="life-primary" disabled={busy}>{busy?'正在保存…':'保存个人资料'}</button></form>
+    </section></div>}
+  </div>
+}

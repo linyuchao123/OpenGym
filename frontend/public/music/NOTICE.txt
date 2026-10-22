@@ -1,0 +1,7 @@
+openGym original instrumental loops
+
+向前一步 / 清晨出发 / 慢慢呼吸
+Created for this project with scripts/make-community-music.py on 2026-10-19.
+Entirely procedural sine-wave synthesis. No external melody, sample or recording was imported.
+These project-provided tracks may be used as background music in this openGym instance.
+Not a catalogue of popular commercial songs. No third-party attribution required.

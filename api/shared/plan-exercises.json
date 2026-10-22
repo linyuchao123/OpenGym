@@ -1,0 +1,177 @@
+[
+  {
+    "id": "0025",
+    "name": "barbell bench press",
+    "equipment": "barbell",
+    "part": "chest",
+    "muscle": "pectorals"
+  },
+  {
+    "id": "0027",
+    "name": "barbell bent over row",
+    "equipment": "barbell",
+    "part": "back",
+    "muscle": "upper back"
+  },
+  {
+    "id": "0031",
+    "name": "barbell curl",
+    "equipment": "barbell",
+    "part": "upper arms",
+    "muscle": "biceps"
+  },
+  {
+    "id": "0043",
+    "name": "barbell full squat",
+    "equipment": "barbell",
+    "part": "upper legs",
+    "muscle": "glutes"
+  },
+  {
+    "id": "0047",
+    "name": "barbell incline bench press",
+    "equipment": "barbell",
+    "part": "chest",
+    "muscle": "pectorals"
+  },
+  {
+    "id": "0085",
+    "name": "barbell romanian deadlift",
+    "equipment": "barbell",
+    "part": "upper legs",
+    "muscle": "glutes"
+  },
+  {
+    "id": "1373",
+    "name": "bodyweight standing calf raise",
+    "equipment": "body weight",
+    "part": "lower legs",
+    "muscle": "calves"
+  },
+  {
+    "id": "2330",
+    "name": "cable lat pulldown full range of motion",
+    "equipment": "cable",
+    "part": "back",
+    "muscle": "lats"
+  },
+  {
+    "id": "1323",
+    "name": "cable rope seated row",
+    "equipment": "cable",
+    "part": "back",
+    "muscle": "upper back"
+  },
+  {
+    "id": "0241",
+    "name": "cable triceps pushdown (v-bar)",
+    "equipment": "cable",
+    "part": "upper arms",
+    "muscle": "triceps"
+  },
+  {
+    "id": "0274",
+    "name": "crunch floor",
+    "equipment": "body weight",
+    "part": "waist",
+    "muscle": "abs"
+  },
+  {
+    "id": "0276",
+    "name": "dead bug",
+    "equipment": "body weight",
+    "part": "waist",
+    "muscle": "abs"
+  },
+  {
+    "id": "0293",
+    "name": "dumbbell bent over row",
+    "equipment": "dumbbell",
+    "part": "back",
+    "muscle": "upper back"
+  },
+  {
+    "id": "1760",
+    "name": "dumbbell goblet squat",
+    "equipment": "dumbbell",
+    "part": "upper legs",
+    "muscle": "quads"
+  },
+  {
+    "id": "0313",
+    "name": "dumbbell hammer curl",
+    "equipment": "dumbbell",
+    "part": "upper arms",
+    "muscle": "biceps"
+  },
+  {
+    "id": "0334",
+    "name": "dumbbell lateral raise",
+    "equipment": "dumbbell",
+    "part": "shoulders",
+    "muscle": "delts"
+  },
+  {
+    "id": "1459",
+    "name": "dumbbell romanian deadlift",
+    "equipment": "dumbbell",
+    "part": "upper legs",
+    "muscle": "glutes"
+  },
+  {
+    "id": "0426",
+    "name": "dumbbell standing overhead press",
+    "equipment": "dumbbell",
+    "part": "shoulders",
+    "muscle": "delts"
+  },
+  {
+    "id": "0585",
+    "name": "lever leg extension",
+    "equipment": "leverage machine",
+    "part": "upper legs",
+    "muscle": "quads"
+  },
+  {
+    "id": "0586",
+    "name": "lever lying leg curl",
+    "equipment": "leverage machine",
+    "part": "upper legs",
+    "muscle": "hamstrings"
+  },
+  {
+    "id": "0605",
+    "name": "lever standing calf raise",
+    "equipment": "leverage machine",
+    "part": "lower legs",
+    "muscle": "calves"
+  },
+  {
+    "id": "0612",
+    "name": "lunge",
+    "equipment": "body weight",
+    "part": "upper legs",
+    "muscle": "quads"
+  },
+  {
+    "id": "0662",
+    "name": "push-up",
+    "equipment": "body weight",
+    "part": "chest",
+    "muscle": "pectorals"
+  },
+  {
+    "id": "0739",
+    "name": "sled 45° leg press",
+    "equipment": "sled machine",
+    "part": "upper legs",
+    "muscle": "glutes"
+  },
+  {
+    "id": "1197",
+    "name": "squat",
+    "equipment": "body weight",
+    "part": "upper legs",
+    "muscle": "quads"
+  }
+]

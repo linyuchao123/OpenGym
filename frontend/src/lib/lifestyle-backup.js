@@ -1,0 +1,10 @@
+const digest=async data=>{const hash=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(data)));return [...new Uint8Array(hash)].map(x=>x.toString(16).padStart(2,'0')).join('')}
+export function validateLifeData(data){
+ if(!data||!Array.isArray(data.meals)||!Array.isArray(data.templates)||data.meals.length>3000||data.templates.length>100)throw new Error('备份记录数量或格式不正确。')
+ for(const rows of [data.meals,data.templates]){const ids=new Set();for(const m of rows){if(!m||typeof m!=='object'||!Array.isArray(m.items)||!m.items.length||m.items.length>30||!['breakfast','lunch','dinner','snack'].includes(m.type))throw new Error('备份含无效餐次或食物。');if(m.id&&(typeof m.id!=='string'||m.id.length>80||ids.has(m.id)))throw new Error('备份含重复或无效的记录标识。');if(m.id)ids.add(m.id);for(const i of m.items){if(typeof i?.name!=='string'||!i.name.trim()||i.name.length>80||typeof i.calories!=='number'||!Number.isFinite(i.calories)||i.calories<0||i.calories>20000)throw new Error('备份含无效食物热量。');for(const k of ['grams','protein','carbs','fat'])if(i[k]!=null&&(typeof i[k]!=='number'||!Number.isFinite(i[k])||i[k]<0||i[k]>20000))throw new Error('备份含无效营养数据。')}}}
+ for(const m of data.meals){if(!/^\d{4}-\d{2}-\d{2}$/.test(m.date||'')||Number.isNaN(Date.parse(m.date))||new Date(m.date).toISOString().slice(0,10)!==m.date)throw new Error('备份含无效日期。')}
+ for(const t of data.templates)if(typeof t.name!=='string'||!t.name.trim()||t.name.length>60)throw new Error('常吃餐名称无效。')
+ return data
+}
+export async function createLifeBackup(meals,templates){const data=validateLifeData({meals,templates});return {type:'opengym-lifestyle',version:2,createdAt:new Date().toISOString(),data,checksum:await digest(data)}}
+export async function readLifeBackup(text){const b=JSON.parse(text);if(b.type!=='opengym-lifestyle'||b.version!==2||!b.data||typeof b.checksum!=='string')throw new Error('请选择此版本导出的饮食备份。');validateLifeData(b.data);if(await digest(b.data)!==b.checksum)throw new Error('备份校验失败，文件可能已被修改或损坏。');return b.data}

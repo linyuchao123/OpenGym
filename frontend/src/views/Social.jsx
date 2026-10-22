@@ -1,0 +1,31 @@
+import Conversation from './Conversation.jsx'
+import {useVisiblePoll} from '../lib/use-visible-poll.js'
+import {clearCommunity} from '../lib/community-cache.js'
+import {useOriginNavigate as useNavigate, ReturnButton, useReturn} from '../lib/route-origin.jsx'
+import { useEffect,useRef,useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
+import { api } from '../lib/api.js'
+import { useStore } from '../store/useStore.js'
+import Avatar from '../components/Avatar.jsx'
+import Icon from '../components/Icon.jsx'
+import MemberActions from '../components/MemberActions.jsx'
+const time=value=>new Date(value).toLocaleString('zh-CN',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'})
+export function Members(){const user=useStore(s=>s.user);return user?<MemberDirectory key={user.id}/>:<LoginPrompt/>}
+function LoginPrompt(){const nav=useNavigate();return <div className="narrow life-page"><div className="card life-empty"><h1>登录后与伙伴交流</h1><button className="life-primary" onClick={()=>nav('/settings/account')}>前往登录</button></div></div>}
+function MemberDirectory(){
+  const [filters]=useSearchParams();const relation=filters.get('relation')||''
+  const nav=useNavigate();const [people,setPeople]=useState([]);const [total,setTotal]=useState(null);const [showBlocked,setShowBlocked]=useState(false);const [search,setSearch]=useState('');const [query,setQuery]=useState('');const [page,setPage]=useState(0);const [more,setMore]=useState(false);const [revision,setRevision]=useState(0);const [loading,setLoading]=useState(false);const [error,setError]=useState('')
+  useEffect(()=>{let alive=true;setLoading(true);setError('');api('/api/life/people?'+new URLSearchParams({q:query,page,blocked:showBlocked?'1':'0',relation})).then(d=>{if(alive){setPeople(old=>page?[...old.filter(x=>!d.people.some(p=>p.id===x.id)),...d.people]:d.people);setMore(d.more);setTotal(Number.isInteger(d.total)?d.total:null)}}).catch(e=>{if(alive)setError(e.message)}).finally(()=>{if(alive)setLoading(false)});return()=>{alive=false}},[query,page,revision,showBlocked,relation])
+  return <div className="narrow life-page"><header className="hdr"><ReturnButton fallback="/community"/><h1>{relation==='following'?'我的关注':relation==='followers'?'关注我的人':'寻找伙伴'}</h1><button className="life-link" onClick={()=>nav('/messages')}>消息</button></header><p className="life-notice">这里展示与你的筛选条件相符的站内成员；尚未完善资料的伙伴显示注册昵称。互相关注后可以私聊，身体资料按本人公开设置展示，饮食记录不会公开。</p><div className="life-section-head"><p className="small muted" role="status">{loading?'正在更新成员…':total!==null?`共 ${total} 位${relation==='followers'?'粉丝':relation==='following'?'关注的伙伴':'成员'}`:''}</p><button className="life-link" disabled={loading} onClick={()=>{setPage(0);setRevision(v=>v+1)}}>刷新列表</button></div><button className="life-link" onClick={()=>{setPage(0);setShowBlocked(v=>!v)}}>{showBlocked?'查看成员':'管理屏蔽列表'}</button><form className="life-search" onSubmit={e=>{e.preventDefault();setPage(0);setQuery(search.trim())}}><input className="life-input" aria-label="搜索成员昵称" maxLength={40} value={search} onChange={e=>setSearch(e.target.value)} placeholder="搜索昵称"/><button className="life-primary">搜索</button></form>{error&&<p className="life-error" role="alert">{error}</p>}{people.map(p=><article className="card" key={p.id}><div className="life-post-header"><button className="avatar-button" aria-label="查看伙伴主页" onClick={()=>nav('/member?id='+encodeURIComponent(p.id))}><Avatar person={p}/></button><div><button className="life-link" onClick={()=>nav('/member?id='+encodeURIComponent(p.id))}>{p.nickname}</button><p className="small muted">{p.followers} 人关注 · 关注 {p.followingCount} 人</p></div></div>{p.bio&&<p>{p.bio}</p>}{p.blocked?<Unblock person={p} onChange={()=>{clearCommunity();setRevision(v=>v+1)}}/>:<MemberActions person={p} onChange={()=>setRevision(v=>v+1)}/>}</article>)}{!people.length&&!loading&&!error&&<div className="card life-empty">暂时没有找到成员，可调整搜索条件或稍后刷新。</div>}{loading&&<p>正在加载…</p>}{more&&<button className="life-secondary" disabled={loading} onClick={()=>setPage(v=>v+1)}>更多成员</button>}</div>
+}
+export function Messages(){const user=useStore(s=>s.user);return user?<MessagePage key={user.id} user={user}/>:<LoginPrompt/>}
+function MessagePage({user}){
+  const nav=useNavigate();const [params]=useSearchParams();const peer=params.get('with');return peer?<Conversation key={peer} peer={peer} user={user}/>:<Inbox nav={nav}/>
+}
+function Inbox({nav}){
+  const [rows,setRows]=useState([]);const [error,setError]=useState('');const [loading,setLoading]=useState(true)
+  const refresh=()=>{setError('');api('/api/life/inbox').then(d=>setRows(d.conversations)).catch(e=>setError(e.message)).finally(()=>setLoading(false))}
+  useVisiblePoll(async alive=>{try{const d=await api('/api/life/inbox');if(alive()){setRows(d.conversations);setError('');setLoading(false)}}catch(e){if(alive()){setError(e.message);setLoading(false)}throw e}},10000,[])
+  return <div className="narrow life-page"><header className="hdr"><ReturnButton fallback="/community"/><h1>私信</h1><button className="life-link" onClick={refresh}>刷新</button></header><p className="small muted">仅会话双方可查看；页面打开时每 10 秒更新。互相关注后可发消息。</p><button className="life-secondary" onClick={()=>nav('/members')}>寻找伙伴</button>{error&&<p className="life-error" role="alert">{error}</p>}{rows.map(c=><button key={c.person.id} className="card life-conversation-row" onClick={()=>nav('/messages?with='+encodeURIComponent(c.person.id))}><Avatar person={c.person}/><span><strong>{c.person.nickname}</strong><span className="small muted">{c.last.kind==='post'?'[健身日常]':c.last.text}</span><time>{time(c.last.createdAt)}</time></span>{c.unread>0&&<b className="life-tag">{c.unread} 条未读</b>}</button>)}{!rows.length&&!loading&&!error&&<section className="card life-empty"><h2>还没有私信</h2><p>先关注伙伴，双方互相关注后就可以交流训练心得。</p></section>}</div>
+}
+function Unblock({person,onChange}){const [busy,setBusy]=useState(false);const [error,setError]=useState('');return <><button className="life-secondary" disabled={busy} onClick={async()=>{setBusy(true);try{await api('/api/life/block',{method:'POST',body:JSON.stringify({id:person.id,blocked:false})});onChange()}catch(e){setError(e.message)}finally{setBusy(false)}}}>解除屏蔽</button>{error&&<p role="alert">{error}</p>}</>}

@@ -1,0 +1,23 @@
+name: Fork checks
+on:
+  workflow_dispatch:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm --prefix frontend ci --ignore-scripts
+      - run: npm --prefix api ci --omit=optional
+      - run: npm --prefix cloudflare ci --ignore-scripts
+      - run: npm --prefix frontend run build
+      - run: node --test api/test/lifestyle.test.js api/test/invitation-limits.test.js
+      - run: npm --prefix frontend test -- src/views/Notifications.read.test.jsx src/lib/unread.test.js src/views/Login.password.test.jsx
+      - run: node --test test/integration.test.mjs test/password.test.mjs
+        working-directory: cloudflare
