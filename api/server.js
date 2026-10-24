@@ -1,4 +1,5 @@
-import {inviteAvailable,inviteInfo,consumeInvite} from './shared/invitations.js';
+import {usageMetrics,communityMetrics,stampEffectiveSaves} from './shared/usage-metrics.js';
+import {inviteAvailable,inviteInfo,consumeInvite,inviteLimitError} from './shared/invitations.js';
 /* opengym-api — passkey (WebAuthn) auth + per-user state storage for openGym
    No framework, JSON-file storage, signed session cookies.               */
 import http from 'node:http';
@@ -2259,6 +2260,7 @@ const routes = {
     // changes (an older app, an API script) changed is stamped here, so it is neither wiped nor
     // undone by the next device that merges (sync-stamps.js).
     // A document nested too deep to compare is the bad request the stringify below refuses too.
+    stampEffectiveSaves(cur,body.state);
     const report = {};
     try { stampPut(cur, body.state, { overRead: body.baseRev != null && body.baseRev === curRev, stamped: body.stamped === true, report }); }
     catch (e) { if (e instanceof RangeError) return json(res, 400, { error: 'invalid state' }); throw e; }
@@ -2527,12 +2529,18 @@ const routes = {
     json(res, 200, { invite });
   },
 
+  'GET /api/admin/usage': async(req,res)=>{
+    const admin=requireAdmin(req,res);if(!admin)return;
+    const states={};for(const u of db.users){try{states[u.id]=JSON.parse(fs.readFileSync(path.join(DATA,'state-'+u.id.replace(/[^a-zA-Z0-9_-]/g,'')+'.json'),'utf8'))}catch{}}
+    let people={},posts=[];try{const life=JSON.parse(fs.readFileSync(path.join(DATA,'lifestyle/records.json'),'utf8'));people=life.people||{};posts=life.posts||[]}catch{}
+    json(res,200,{...usageMetrics(db.users,states,people),community:communityMetrics(posts,people)});
+  },
   'POST /api/admin/invites/update': async (req,res) => {
     const admin=requireAdmin(req,res);if(!admin)return;
     const body=await readBody(req),inv=db.invites.find(i=>i.code===text(body.code).trim().toUpperCase());
     if(!inv)return json(res,404,{error:'邀请码不存在。'});
     if(inv.revoked)return json(res,409,{error:'邀请码已撤销。'});
-    if(!Number.isInteger(body.maxUses)||body.maxUses<1||body.maxUses>100)return json(res,400,{error:'名额须为1至100。'});
+    const limitError=inviteLimitError(inv,body.maxUses);if(limitError)return json(res,400,{error:limitError});
     inv.maxUses=body.maxUses;saveDb();audit(req,'admin.invite.update',{user:admin,msg:inv.code});json(res,200,{invite:inviteInfo(inv)});
   },
 

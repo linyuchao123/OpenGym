@@ -3,6 +3,7 @@ export function notify(s, {to,from,kind,post, key}) {
   if(!to||to===from||(s.blocks[to]||[]).includes(from)||(s.blocks[from]||[]).includes(to))return;
   s.notifications ||= [];
   if(key&&s.notifications.some(n=>n.key===key&&n.to===to))return;
+  s.people ||= {};s.people[to] ||= {profile:{},meals:[]};s.people[to].notificationVersion=crypto.randomUUID();
   s.notifications.push({id:crypto.randomUUID(),to,from,kind,post:post||null,key:key||null,createdAt:Date.now(),readAt:null});
   const own=s.notifications.filter(n=>n.to===to);if(own.length>500){const remove=new Set(own.slice(0,-500).map(n=>n.id));s.notifications=s.notifications.filter(n=>!remove.has(n.id));}
 }
@@ -25,7 +26,9 @@ export function extraRoutes({wrap,getDB,commit,person,publicPerson,visiblePost,j
    const db=getDB(),prefs=db.people[u.id]?.notificationPrefs||{};
    const list=db.notifications.filter(n=>n.to===u.id&&!blocked(u.id,n.from)&&(!n.post||visiblePost(n.post))).slice().reverse();
    const readThrough={notification:db.notifications.filter(n=>n.to===u.id).at(-1)?.id||null,message:db.messages.filter(m=>m.to===u.id).at(-1)?.id||null};
-   json(res,200,{readThrough,items:list.map(n=>({...n,to:undefined,key:undefined,author:publicPerson(n.from)})),unread:prefs.muted?0:list.filter(n=>!n.readAt).length,prefs});
+   const q=new URL(req.url,'http://local').searchParams,[time,id='']=(q.get('before')||'').split(':'),cut=Number(time)||Infinity,limit=Math.max(1,Math.min(50,Math.trunc(Number(q.get('limit'))||50)));
+   const page=list.filter(n=>n.createdAt<cut||(n.createdAt===cut&&n.id<id)).sort((a,b)=>b.createdAt-a.createdAt||b.id.localeCompare(a.id)).slice(0,limit+1);
+   json(res,200,{readThrough,items:page.slice(0,limit).map(n=>({...n,to:undefined,key:undefined,author:publicPerson(n.from)})),next:page.length>limit?`${page[limit-1].createdAt}:${page[limit-1].id}`:null,unread:prefs.muted?0:list.filter(n=>!n.readAt).length,prefs});
   }),
   'POST /api/life/notifications/read':wrap(async(req,res,u)=>{
    const {id,all,through}=await readBody(req);const db=getDB();

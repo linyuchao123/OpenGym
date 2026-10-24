@@ -57,10 +57,23 @@ test('Cloudflare native runtime: private fitness app on local D1',async t=>{
   assert.equal((await request('POST','/api/register/options',{name:'eleventh',code:invite.data.invite.code})).status,403);
   const list=await request('GET','/api/admin/invites',null,alice.cookie);assert.equal(list.data.invites.find(i=>i.code===invite.data.invite.code).usedCount,10);
  });
+ await t.test('last invite place is consumed atomically; a full code can expand to 1000 without history loss',async()=>{
+  const code=(await request('POST','/api/admin/invites/new',{},alice.cookie)).data.invite.code;
+  assert.equal((await request('POST','/api/admin/invites/update',{code,maxUses:1},alice.cookie)).status,200);
+  const results=await Promise.all(['One','Two'].map(n=>request('POST','/api/register/password',{name:'Race'+n,code,password:'Strong-Race-Fixture!839'})));
+  assert.equal(results.filter(x=>x.status===200).length,1,JSON.stringify(results));
+  const before=(await request('GET','/api/admin/invites',null,alice.cookie)).data.invites.find(i=>i.code===code);
+  assert.equal(before.usedCount,1);
+  const after=(await request('POST','/api/admin/invites/update',{code,maxUses:1000},alice.cookie)).data.invite;
+  assert.deepEqual(after.uses,before.uses);assert.equal(after.createdBy,before.createdBy);assert.equal(after.remaining,999);
+  assert.equal((await request('POST','/api/admin/invites/update',{code,maxUses:0},alice.cookie)).status,400);
+  await request('POST','/api/admin/invites/revoke',{code},alice.cookie);
+  assert.equal((await request('POST','/api/admin/invites/update',{code,maxUses:1000},alice.cookie)).status,409);
+ });
  await t.test('expanded invite keeps its uses and accepts the eleventh registration',async()=>{
   const list=await request('GET','/api/admin/invites',null,alice.cookie),old=list.data.invites.find(i=>i.usedCount===10);
   assert.equal((await request('POST','/api/admin/invites/update',{code:old.code,maxUses:100},bob.cookie)).status,403);
-  assert.equal((await request('POST','/api/admin/invites/update',{code:old.code,maxUses:101},alice.cookie)).status,400);
+  assert.equal((await request('POST','/api/admin/invites/update',{code:old.code,maxUses:1001},alice.cookie)).status,400);
   const expanded=await request('POST','/api/admin/invites/update',{code:old.code,maxUses:100},alice.cookie);
   assert.equal(expanded.data.invite.usedCount,10);assert.equal(expanded.data.invite.remaining,90);
   await signup('扩容后第十一位',old.code);
@@ -199,6 +212,39 @@ test('Cloudflare native runtime: private fitness app on local D1',async t=>{
   assert.equal((await request('PUT','/api/life/profile',{baseProfileVersion:old.version,bio:'过时简介'},alice.cookie)).status,409);
   const loginOptions=await request('POST','/api/login/options',{}),freshBob=await request('POST','/api/login/verify',{cid:loginOptions.data.cid,credential:bob.key.assertion(loginOptions.data.options.challenge)});assert.equal(freshBob.status,200);assert.equal((await request('GET','/api/life/music/connection',null,freshBob.cookie)).status,403);
   assert.equal((await request('POST','/api/life/music/connection/test',{},alice.cookie)).data.stage,'configuration');
+ });
+
+ await t.test('growth share allowlist, disabling owner and report lifecycle on real D1',async()=>{
+  const prof=await request('PUT','/api/life/profile',{trainingGoal:'strength',experience:'beginner',onboardingCompleted:true},alice.cookie);assert.equal(prof.status,200);assert.equal(prof.data.profile.trainingGoal,'strength');
+  assert.equal((await request('POST','/api/life/share-config',{enabled:true,fields:['weightKg'],consent:true},alice.cookie)).status,400);
+  const share=await request('POST','/api/life/share-config',{enabled:true,fields:['nickname','growth'],consent:true},alice.cookie);assert.equal(share.status,200,JSON.stringify(share.data));const token=share.data.profile.externalShare.token;
+  const preview=await request('GET','/api/life/public-growth?token='+token);assert.equal(preview.status,200);assert.ok(preview.data.includes('noindex'));assert.ok(!preview.data.includes('weightKg'));assert.ok(preview.headers.get('cache-control').includes('no-store'));
+  await request('POST','/api/life/share-config',{enabled:false},alice.cookie);assert.equal((await request('GET','/api/life/public-growth?token='+token)).status,404);
+  const newCode=(await request('POST','/api/admin/invites/new',{},alice.cookie)).data.invite.code;
+  const peer=await request('POST','/api/register/password',{code:newCode,name:'Growth owner fixture',password:'Growth-Fixture-Long!830'});assert.equal(peer.status,200);
+  const next=await request('POST','/api/life/share-config',{enabled:true,fields:['growth'],consent:true},peer.cookie);assert.equal(next.status,200,JSON.stringify(next.data));const otherToken=next.data.profile.externalShare.token;
+  await request('POST','/api/admin/user/disable',{id:peer.data.user.id,disabled:true},alice.cookie);assert.equal((await request('GET','/api/life/public-growth?token='+otherToken)).status,404);
+  await request('POST','/api/admin/user/disable',{id:peer.data.user.id,disabled:false},alice.cookie);
+  const p=await request('POST','/api/life/post',{text:'测试问题',category:'question'},alice.cookie);assert.equal(p.status,200);
+  const r=await request('POST','/api/life/report',{kind:'post',id:p.data.post.id,reason:'需要管理员复核'},alice.cookie);assert.equal(r.status,200);
+  assert.equal((await request('GET','/api/life/admin/reports',null,alice.cookie)).data.reports.length,1);
+  assert.equal((await request('POST','/api/life/admin/reports',{id:r.data.id,status:'resolved',note:'已人工核查',removeContent:true},alice.cookie)).status,200);
+  assert.equal((await request('GET','/api/life/feed?post='+p.data.post.id,null,alice.cookie)).data.posts.length,0);
+  const metrics=await request('GET','/api/admin/usage',null,alice.cookie);assert.equal(metrics.status,200);assert.ok(metrics.data.registered>1);assert.ok(!JSON.stringify(metrics.data).includes('workouts'));assert.ok(metrics.data.quality.some(q=>q.rowsRead>0));assert.ok(metrics.data.groups.goal.length>0);
+ });
+
+ await t.test('Capacitor pairing uses one-shot codes, isolated bearer sessions, CORS and revocation',async()=>{
+  const code=(await request('POST','/api/pair/create',{},alice.cookie)).data.code;assert.ok(code);
+  const native=async(path,method='GET',body,token)=>{const r=await fetch(origin+path,{method,headers:{Origin:'capacitor://localhost',...(token?{Authorization:'Bearer '+token}:{}),...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{})});return {r,data:await r.json()}};
+  const paired=await native('/api/pair/redeem','POST',{code});assert.equal(paired.r.status,200,JSON.stringify(paired.data));const token=paired.data.token;assert.ok(token);
+  assert.equal((await native('/api/pair/redeem','POST',{code})).r.status,400);
+  const me=await native('/api/me','GET',null,token);assert.equal(me.r.status,200);assert.equal(me.r.headers.get('access-control-allow-origin'),'capacitor://localhost');
+  const noProof=await native('/api/data','PUT',{state:{workouts:[],routines:[]}});assert.equal(noProof.r.status,403);
+  const hostile=await fetch(origin+'/api/data',{method:'PUT',headers:{Origin:'https://evil.test',Authorization:'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({state:{workouts:[],routines:[]}})});assert.equal(hostile.status,403);
+  const preflight=await fetch(origin+'/api/data',{method:'OPTIONS',headers:{Origin:'https://localhost','Access-Control-Request-Headers':'authorization,content-type'}});assert.equal(preflight.status,204);assert.equal(preflight.headers.get('access-control-allow-credentials'),null);
+  const denied=await fetch(origin+'/api/data',{method:'OPTIONS',headers:{Origin:'https://evil.test'}});assert.equal(denied.status,403);
+  assert.equal((await native('/api/logout','POST',{},token)).r.status,200);assert.equal((await native('/api/data','GET',null,token)).r.status,401);
+  assert.equal((await request('GET','/api/me',null,alice.cookie)).status,200);
  });
 
 });

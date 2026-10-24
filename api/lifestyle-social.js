@@ -2,7 +2,7 @@ import {notify} from './lifestyle-extra.js';
 import crypto from 'node:crypto';
 
 // All queries are scoped to the authenticated member. Never expose nutrition or account fields.
-export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody, getMember }) {
+export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody, getMember,postCounts,peoplePage }) {
   const fail = (res, error, status = 400) => json(res, status, { error });
   const query = req => new URL(req.url, 'http://localhost').searchParams;
   const blocked = (a,b) => (getDB().blocks[a] || []).includes(b) || (getDB().blocks[b] || []).includes(a);
@@ -15,7 +15,7 @@ export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody
   const related = (id, relation, viewer=id) => candidates().filter(other=>other!==id && known(other) && !blocked(id,other) && !blocked(viewer,other) && (relation==='following'?following(id,other):following(other,id)));
   const member = (id, viewer) => ({ ...publicPerson(id), following: following(viewer,id), followsYou: following(id,viewer),
     blocked: (getDB().blocks[viewer] || []).includes(id), canChat: canChat(viewer,id),
-    followers: related(id,'followers',viewer).length, followingCount: related(id,'following',viewer).length, postCount:getDB().posts.filter(p=>p.uid===id&&!p.deleted).length });
+    followers: related(id,'followers',viewer).length, followingCount: related(id,'following',viewer).length, postCount:postCounts?.[id]??getDB().posts.filter(p=>p.uid===id&&!p.deleted).length });
   const participants = (m,a,b) => (m.from === a && m.to === b) || (m.from === b && m.to === a);
   const card = (id,viewer) => {
     const p=getDB().posts.find(p=>p.id===id&&!p.deleted&&!blocked(viewer,p.uid));
@@ -25,13 +25,14 @@ export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody
   return {
     'GET /api/life/people': wrap(async(req,res,u)=>{
       const q = query(req); const id = q.get('id');
-      if (id) { if (!known(id)) return fail(res,'成员不存在。',404); return json(res,200,{person:member(id,u.id)}); }
+      if (id) { if (!known(id)||(id!==u.id&&blocked(u.id,id))) return fail(res,'成员不存在或不可见。',404); return json(res,200,{person:member(id,u.id)}); }
+      if(peoplePage)return json(res,200,{people:peoplePage.ids.map(id=>member(id,u.id)),total:peoplePage.total,more:peoplePage.more,next:peoplePage.next});
       const needle = (q.get('q') || '').trim().slice(0,40).toLocaleLowerCase();
       const page = Math.max(0,Math.min(10000,Number(q.get('page')) || 0));
       const relation=q.get('relation'),showBlocked=q.get('blocked')==='1';
       const source=!showBlocked&&['following','followers'].includes(relation)?related(u.id,relation):candidates();
       const list = source.filter(id=>id !== u.id && known(id) && (showBlocked ? (getDB().blocks[u.id] || []).includes(id) : !blocked(u.id,id)) && (!needle || publicPerson(id).nickname.toLocaleLowerCase().includes(needle))).sort();
-      json(res,200,{people:list.slice(page*30,page*30+30).map(id=>member(id,u.id)),total:list.length,more:list.length>(page+1)*30});
+      json(res,200,{people:(q.get('cursor')?list.filter(id=>id>q.get('cursor')).slice(0,30):list.slice(page*30,page*30+30)).map(id=>member(id,u.id)),total:list.length,more:(q.get('cursor')?list.filter(id=>id>q.get('cursor')).length>30:list.length>(page+1)*30),next:(q.get('cursor')?list.filter(id=>id>q.get('cursor')).slice(0,30):list.slice(page*30,page*30+30)).at(-1)||null});
     }),
     'POST /api/life/follow': wrap(async(req,res,u)=>{
       const body = await readBody(req); const id = body.id;

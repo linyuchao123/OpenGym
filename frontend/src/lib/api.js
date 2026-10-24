@@ -117,6 +117,11 @@ export function beacon(path, body) {
    answer allows it for GET and PUT); both refuse to run on a phone without a server, like api(). */
 
 const mediaUrl = path => (remoteBase ? remoteBase + path : appBase().replace(/\/$/, '') + path)
+export function remoteMediaHeaders(url){
+ if(!remoteBase)return {};
+ try{const expected=new URL(remoteBase),target=new URL(url,location.href);if(target.origin===expected.origin&&target.pathname.startsWith(expected.pathname.replace(/\/$/,'')+'/api/'))return remoteHeaders()}catch{}
+ return {};
+}
 const mediaHeaders = remoteHeaders
 const notPaired = () => failure(t('This phone is not connected to a server.'), 'not-paired', 0)
 const timedOut = () => failure(t('The server did not answer in time.'), 'timeout')

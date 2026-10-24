@@ -1,3 +1,4 @@
+import {ModerationPanel,UsagePanel} from '../components/CommunitySafety.jsx'
 import {ReturnButton} from '../lib/route-origin.jsx'
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -154,32 +155,35 @@ function UserDetail({ id, onChanged, close }) {
 function InvitesCard({ invites, reload, inviteOnly }) {
   const toast = useUI(s => s.toast)
   const gen = () => api('/api/admin/invites/new', { method: 'POST', body: '{}' })
-    .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast('Code ' + invite.code + ' created & copied'); reload() })
+    .then(({ invite }) => { navigator.clipboard?.writeText(invite.code).catch(() => {}); toast('邀请码已创建并复制'); reload() })
     .catch(e => toast(e.message))
   const revoke = code => confirmSheet({
-    title: 'Revoke code ' + code + '?', message: 'Anyone who has it can no longer use it. People who already signed up with it are not affected.',
-    confirmText: 'Revoke', danger: true,
+    title: '撤销此邀请码？', message: '撤销后不能继续注册，已注册用户不受影响。',
+    confirmText: '撤销', danger: true,
     onConfirm: () => api('/api/admin/invites/revoke', { method: 'POST', body: JSON.stringify({ code }) })
-      .then(() => { toast('Code revoked'); reload() }).catch(e => toast(e.message))
+      .then(() => { toast('邀请码已撤销'); reload() }).catch(e => toast(e.message))
   })
-  const expand = code => confirmSheet({title:'将此邀请码扩容至100人？',message:'保留原邀请码和已注册人数，累计最多100人；不设置时间期限。',confirmText:'扩容至100人',onConfirm:()=>api('/api/admin/invites/update',{method:'POST',body:JSON.stringify({code,maxUses:100})}).then(()=>{toast('邀请码已扩容至100人');reload()}).catch(e=>toast(e.message))})
-  const copy = code => { navigator.clipboard?.writeText(code).catch(() => {}); toast('Copied ' + code) }
+  const expand = (code,maxUses) => confirmSheet({title:`将此邀请码扩容至${maxUses}人？`,message:`保留原码、邀请来源和全部使用记录，累计最多${maxUses}次注册；不设时间期限，达到名额或撤销后失效。`,confirmText:`扩容至${maxUses}人`,onConfirm:()=>api('/api/admin/invites/update',{method:'POST',body:JSON.stringify({code,maxUses})}).then(()=>{toast(`邀请码已扩容至${maxUses}人`);reload()}).catch(e=>toast(e.message))})
+  const limits = i => !i.revoked && [100,1000].filter(n=>n>(i.maxUses||10)).map(n=><button key={n} className="btn" style={{fontSize:12,padding:'6px 8px'}} onClick={()=>expand(i.code,n)} aria-label={`扩容至${n}人`}>{n}人</button>)
+  const usage = i => `已使用 ${i.usedCount??(i.usedBy?1:0)} / 总名额 ${i.maxUses||10} / 剩余 ${i.revoked?0:Math.max(0,(i.maxUses||10)-(i.usedCount??(i.usedBy?1:0)))}`
+
+  const copy = code => { navigator.clipboard?.writeText(code).catch(() => {}); toast('邀请码已复制') }
   const open = (invites || []).filter(i => !i.revoked&&(i.usedCount??(i.usedBy?1:0))<(i.maxUses||10))
   const used = (invites || []).filter(i => i.revoked||(i.usedCount??(i.usedBy?1:0))>=(i.maxUses||10))
   return <div className="card">
-    <div className="row between"><h2 style={{ margin: 0 }}>Invite codes</h2>
-      <Button variant="primary" size="sm" onClick={gen} icon="plus">New code</Button></div>
+    <div className="row between"><h2 style={{ margin: 0 }}>邀请码</h2>
+      <Button variant="primary" size="sm" onClick={gen} icon="plus">新建邀请码</Button></div>
     <div className="adm-lead">
       {inviteOnly
-        ? 'Sign-up is invite-only: someone needs one of these codes to create a profile. New codes allow 10 accounts; individual codes can be increased to 100.'
-        : 'Sign-up is open, so codes are optional here. They only record who invited whom.'}
+        ? '注册需要邀请码。新码默认10人，可单独扩容至100或1000人；总名额为累计注册人数，不设置时间期限。'
+        : '当前开放注册；邀请码用于记录邀请来源。'}
     </div>
     {open.length ? <>
       <div className="adm-group-t">可用邀请码 · 点击复制</div>
       {open.map(i => <div key={i.code} className="row between" style={{ padding: '6px 0', borderBottom: 'var(--hair) solid var(--sep)' }}>
-        <button className="adm-code" onClick={() => copy(i.code)} aria-label={'copy ' + i.code}>{i.code} <small> {i.usedCount??(i.usedBy?1:0)} / {i.maxUses||10}</small></button>
+        <button className="adm-code" onClick={() => copy(i.code)} aria-label={'copy ' + i.code}>{i.code} <small> {usage(i)}</small></button>
         <div className="row" style={{ gap: 4 }}>
-          {(i.maxUses||10)<100&&<button className="btn" style={{fontSize:12,padding:'6px 8px'}} onClick={()=>expand(i.code)} aria-label={'扩容邀请码 '+i.code}>100人</button>}
+          {limits(i)}
           <button className="iconbtn adm-iconbtn" onClick={() => copy(i.code)} aria-label="copy"><Icon name="copy" /></button>
           <button className="iconbtn adm-iconbtn" style={{ color: 'var(--red)' }} onClick={() => revoke(i.code)} aria-label="revoke"><Icon name="trash" /></button>
         </div>
@@ -188,10 +192,10 @@ function InvitesCard({ invites, reload, inviteOnly }) {
     {used.length ? <>
       <div className="adm-group-t" style={{ marginTop: open.length ? 12 : 0 }}>已满或已撤销</div>
       {used.map(i => <div key={i.code} className="row between dim" style={{ padding: '6px 0', fontSize: '.82rem' }}>
-        <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', letterSpacing: '.06em' }}>{i.code}</span><span>{i.usedCount??(i.usedBy?1:0)} / {i.maxUses||10}{i.revoked?' · 已撤销':''}</span>{!i.revoked&&(i.maxUses||10)<100&&<button className="btn" onClick={()=>expand(i.code)}>扩容至100人</button>}
+        <span style={{ fontFamily: 'ui-monospace,SFMono-Regular,Menlo,monospace', letterSpacing: '.06em' }}>{i.code}</span><span>{i.usedCount??(i.usedBy?1:0)} / {i.maxUses||10}{i.revoked?' · 已撤销':''}</span>{limits(i)}
       </div>)}
     </> : null}
-    {!open.length && !used.length && <div className="adm-empty">No codes yet. "New code" makes one and copies it to your clipboard.</div>}
+    {!open.length && !used.length && <div className="adm-empty">暂无邀请码，点击“新建邀请码”即可创建并复制。</div>}
   </div>
 }
 
@@ -281,7 +285,8 @@ export default function Admin() {
 
   const openUser = id => openSheet(close => <UserDetail id={id} onChanged={loadUsers} close={close} />)
   const liveUsers = (users || []).filter(u => u.live)
-  const activeCount = (users || []).filter(u => u.lastSync && Date.now() - u.lastSync < 7 * 86400000).length
+  const activeCount = (users || []).filter(u => { const at = new Date(u.lastActiveAt || u.lastSync || 0).getTime(); return at > 0 && Date.now() - at < 7 * 86400000 }).length
+  const liveAvailable = users?.some(u => Object.hasOwn(u, 'live'))
   const disabledCount = (users || []).filter(u => u.disabled).length
 
   return <div className="narrow">
@@ -305,7 +310,7 @@ export default function Admin() {
 
     <div className="tiles" style={{ marginBottom: 12 }}>
       <div className="tile"><div className="l">Users</div><div className="v">{users ? users.length : '–'}</div></div>
-      <div className="tile"><div className="l">Training now</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users ? liveUsers.length : '–'}</div></div>
+      <div className="tile"><div className="l">Training now</div><div className="v" style={{ color: liveUsers.length ? 'var(--acc)' : undefined }}>{users && liveAvailable ? liveUsers.length : '–'}</div></div>
       <div className="tile"><div className="l">Active 7 days</div><div className="v">{users ? activeCount : '–'}</div></div>
       <div className="tile"><div className="l">Disabled</div><div className="v">{users ? disabledCount : '–'}</div></div>
     </div>
@@ -322,6 +327,7 @@ export default function Admin() {
 
     {/* The Coach setup. Renders nothing at all unless the instance offers the Coach, so an admin
         page on a box that never enabled it is byte-for-byte the page it was before. */}
+    <UsagePanel/><ModerationPanel/>
     <AdminCoach />
 
     <InvitesCard invites={invites} reload={loadInvites} inviteOnly={inviteOnly} />
@@ -332,7 +338,7 @@ export default function Admin() {
       <div className="list">
         {(users || []).map(u => <div key={u.id} className="item" onClick={() => openUser(u.id)} style={u.disabled ? { opacity: .55 } : null}>
           <div className="grow"><div className="tt">{u.live && <Icon name="dot" style={{ fontSize: 9, color: 'var(--green)', display: 'inline-block', marginInlineEnd: 5 }} />}{u.name} {u.admin && <span className="adm-pill acc" style={{ marginInlineStart: 4 }}>admin</span>}{u.disabled && <span className="adm-pill bad" style={{ marginInlineStart: 4 }}>disabled</span>}</div>
-            <div className="ss">{u.live ? 'training now · ' + u.live.name : u.workouts + ' workouts' + (u.lastWorkout ? ' · last ' + fmtDate(u.lastWorkout) : '') + ' · last sync ' + rel(u.lastSync)}</div>
+            <div className="ss">{u.live ? 'training now · ' + u.live.name : (Number.isFinite(u.workouts) ? u.workouts + ' 次训练' + (u.lastWorkout ? ' · 最近训练 ' + fmtDate(u.lastWorkout) : '') + ' · ' : '') + '最近活跃 ' + rel(u.lastActiveAt || u.lastSync)}</div>
             {u.email && <div className="ss" title="sign-in e-mail">{u.email}</div>}</div>
           {u.hasPush && <Icon name="bell" title="push notifications on" style={{ fontSize: 15, color: 'var(--label-3)' }} />}<Icon name="chevronRight" className="chev" />
         </div>)}

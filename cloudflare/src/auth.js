@@ -1,8 +1,9 @@
 import {hashPassword,verifyPassword,validatePassword,nameKey,normalizeEmail} from './password.js';
-import {inviteAvailable,inviteInfo,consumeInvite} from '../../api/shared/invitations.js';
+import {inviteAvailable,inviteInfo,consumeInvite,inviteLimitError} from '../../api/shared/invitations.js';
 import {generateRegistrationOptions,verifyRegistrationResponse,generateAuthenticationOptions,verifyAuthenticationResponse} from '@simplewebauthn/server';
 import {HttpError} from './repository.js';
 import {makeLinkCode,hashLinkCode} from '../../api/device-link.js';
+export const sessionToken=request=>request.headers.get('authorization')?.match(/^Bearer ([A-Za-z0-9_-]{32,100})$/)?.[1]||request.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith('gym_cf='))?.slice(7)||'';
 export const publicUser=u=>({id:u.id,name:u.name,admin:u.admin===true});
 const nowISO=()=>new Date().toISOString();
 const random=()=>{const b=crypto.getRandomValues(new Uint8Array(32));return Buffer.from(b).toString('base64url')};
@@ -14,12 +15,13 @@ export async function authContext(repo,request,env){
  const set=(kind,id,value)=>rows.set(kind+':'+id,JSON.stringify(value));
  const drop=(kind,id)=>rows.delete(kind+':'+id);
  snapshot.rows=new Map(rows);
- for(const [key,raw] of rows){if(/^(session|challenge|link):/.test(key)&&JSON.parse(raw).exp<Date.now())rows.delete(key);}
+ for(const [key,raw] of rows){if(/^(session|challenge|link|pair):/.test(key)&&JSON.parse(raw).exp<Date.now())rows.delete(key);}
  const save=()=>repo.save(snapshot,new Map(rows));
  // snapshot.rows must remain the last persisted copy for change detection.
- const token=request.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith('gym_cf='))?.slice(7)||'';
+ const token=sessionToken(request);
  const session=token?get('session',await digest(token)):null;
  let user=session&&session.exp>Date.now()?get('user',session.uid):null;
+ if(request.headers.has('authorization')&&!session?.native)user=null;
  if(user?.disabled||session?.sv!==(user?.sv||0))user=null;
  const need=()=>{if(!user)throw new HttpError(401,'请先登录。');return user};
  const admin=()=>{const u=need();if(!u.admin)throw new HttpError(403,'仅管理员可操作。');return u};
@@ -49,6 +51,16 @@ export async function authContext(repo,request,env){
   if(!u.password||!await verifyPassword(body.current,u.password))throw new HttpError(403,'请使用当前密码或通行密钥确认本人。','current-wrong');
  };
  async function route(path,body){
+  if(path==='POST /api/pair/create'){
+   const u=need();for(const [id,raw] of rows)if(id.startsWith('pair:')&&JSON.parse(raw).uid===u.id)rows.delete(id);
+   const code=Buffer.from(crypto.getRandomValues(new Uint8Array(8))).toString('hex').toUpperCase();set('pair',await digest(code),{uid:u.id,sv:u.sv||0,exp:Date.now()+300000});await save();return {code};
+  }
+  if(path==='POST /api/pair/redeem'){
+   await repo.throttle('native-pair:'+(request.headers.get('cf-connecting-ip')||'local'),10,300);
+   const hash=await digest(String(body.code||'').trim().toUpperCase()),pair=get('pair',hash),u=pair?get('user',pair.uid):null;
+   if(!pair||pair.exp<Date.now()||!u||u.disabled||pair.sv!==(u.sv||0))throw new HttpError(400,'配对码已过期或不可用。','pair-invalid');
+   drop('pair',hash);const token=random();set('session',await digest(token),{uid:u.id,sv:u.sv||0,native:true,exp:Date.now()+30*86400000});await save();return {token,user:publicUser(u)};
+  }
   if(path==='POST /api/register/password'){
    const name=String(body.name||'').trim().slice(0,40),code=String(body.code||'').trim().toUpperCase();
    if(!name)throw new HttpError(400,'请填写昵称。');
@@ -151,7 +163,7 @@ export async function authContext(repo,request,env){
   if(path==='POST /api/admin/invites/update'){
    admin();const code=String(body.code||'').trim().toUpperCase(),inv=get('invite',code);
    if(!inv)throw new HttpError(404,'邀请码不存在。');
-   if(!Number.isInteger(body.maxUses)||body.maxUses<1||body.maxUses>100)throw new HttpError(400,'名额须为1至100。');
+   const limitError=inviteLimitError(inv,body.maxUses);if(limitError)throw new HttpError(400,limitError);
    if(inv.revoked)throw new HttpError(409,'此邀请码已撤销，请创建新码。');
    inv.maxUses=body.maxUses;set('invite',code,inv);await save();return {invite:inviteInfo(inv)};
   }
@@ -167,11 +179,18 @@ export async function authContext(repo,request,env){
 
 // A byte-range/photo request needs one session and its owner, not the whole auth registry.
 export async function mediaSession(repo,request){
- const token=request.headers.get('cookie')?.split(';').map(x=>x.trim()).find(x=>x.startsWith('gym_cf='))?.slice(7)||'';
+ const token=sessionToken(request);
  if(!token)throw new HttpError(401,'请先登录。');
  const hash=Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(token))).toString('hex');
  // One D1 round trip per range request. Never cache authentication or disabled status.
  const row=await repo.db.prepare("SELECT s.body AS session,u.body AS user FROM documents s JOIN documents u ON u.scope='auth' AND u.id='user:'||json_extract(s.body,'$.uid') WHERE s.scope='auth' AND s.id=?").bind('session:'+hash).first();
  if(!row)throw new HttpError(401,'请先登录。');const session=JSON.parse(row.session),user=JSON.parse(row.user);
+ if(request.headers.has('authorization')&&!session.native)throw new HttpError(401,'请重新配对手机应用。');
  if(session.exp<Date.now()||user.disabled||session.sv!==(user.sv||0))throw new HttpError(401,'请先登录。');return user;
+}
+
+// Community requests need active member names, never passwords, passkeys or other sessions.
+export async function memberContext(repo,request){
+ const user=await mediaSession(repo,request),{results}=await repo.db.prepare("SELECT substr(id,6) id,json_extract(body,'$.name') name FROM documents WHERE scope='auth' AND id LIKE 'user:%' AND COALESCE(json_extract(body,'$.disabled'),0)=0").all();
+ const members=new Map(results.map(r=>[r.id,r]));return {user,need:()=>user,admin:()=>{if(!user.admin)throw new HttpError(403,'仅管理员可操作。');return user},getMember:id=>members.get(id)||null,route:async()=>null};
 }

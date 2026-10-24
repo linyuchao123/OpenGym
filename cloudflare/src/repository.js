@@ -1,26 +1,38 @@
+import {peopleSnapshot} from './people-query.js';
+import {observedDatabase} from './db-observability.js';
+import {writeSnapshot} from './write-query.js';
+import {socialSnapshot} from './social-query.js';
+import {feedSnapshot} from './feed-query.js';
 import {r2Response} from './r2-media.js';
 // D1 stores ordinary JSON documents and chunked private blobs, no ephemeral filesystem.
 // Revision checks and writes share one D1 transaction: a raced write never overwrites data.
 export class HttpError extends Error { constructor(status,message,code){super(message);this.status=status;this.code=code} }
 export class Repository {
- constructor(db){this.db=db}
+ constructor(db,stats){this.db=stats?observedDatabase(db,stats):db}
  async load(scope){
   const result=await this.db.batch([this.db.prepare('SELECT rev FROM versions WHERE scope=?').bind(scope),this.db.prepare('SELECT id,body FROM documents WHERE scope=? ORDER BY id').bind(scope)]);
   return {scope,rev:result[0].results[0]?.rev||0,rows:new Map(result[1].results.map(r=>[r.id,r.body]))};
  }
+ async loadRecord(scope,id){
+  const row=await this.db.prepare('SELECT body FROM documents WHERE scope=? AND id=?').bind(scope,id).first();
+  return {scope,recordScoped:true,rows:new Map(row?[[id,row.body]]:[])};
+ }
  async save(snapshot,rows){
-  const changes=[];
-  for(const [id,body] of rows){if(body.length>1500000)throw new HttpError(413,'单份记录过大，请先备份整理。');if(snapshot.rows.get(id)!==body)changes.push(this.db.prepare('INSERT INTO documents(scope,id,body) VALUES(?,?,?) ON CONFLICT(scope,id) DO UPDATE SET body=excluded.body').bind(snapshot.scope,id,body))}
-  for(const id of snapshot.rows.keys())if(!rows.has(id))changes.push(this.db.prepare('DELETE FROM documents WHERE scope=? AND id=?').bind(snapshot.scope,id));
+  const changes=[],checks=[],checked=new Set();
+  const recordScoped=snapshot.recordScoped;
+  const check=id=>{if(recordScoped&&!checked.has(id)){checked.add(id);checks.push(this.db.prepare('INSERT INTO document_checks(scope,id,expected) VALUES(?,?,?)').bind(snapshot.scope,id,snapshot.rows.get(id)??null))}};
+  for(const [id,body] of rows){if(snapshot.readonlyIds?.has(id))continue;if(body.length>1500000)throw new HttpError(413,'单份记录过大，请先备份整理。');if(snapshot.rows.get(id)!==body){check(id);changes.push(this.db.prepare('INSERT INTO documents(scope,id,body) VALUES(?,?,?) ON CONFLICT(scope,id) DO UPDATE SET body=excluded.body').bind(snapshot.scope,id,body))}}
+  for(const id of snapshot.rows.keys())if(!snapshot.readonlyIds?.has(id)&&!rows.has(id)){check(id);changes.push(this.db.prepare('DELETE FROM documents WHERE scope=? AND id=?').bind(snapshot.scope,id))};
   if(!changes.length)return;
   if(changes.length>90)throw new HttpError(413,'单次更改过多，请分批导入。');
+  for(const id of snapshot.guards||[])check(id);
   const scope=snapshot.scope;
   try{await this.db.batch([
-   this.db.prepare('INSERT INTO revision_checks(scope,expected) VALUES(?,?)').bind(scope,snapshot.rev),...changes,
+   ...(recordScoped?checks:[this.db.prepare('INSERT INTO revision_checks(scope,expected) VALUES(?,?)').bind(scope,snapshot.rev)]),...changes,
    this.db.prepare('INSERT INTO versions(scope,rev) VALUES(?,1) ON CONFLICT(scope) DO UPDATE SET rev=rev+1').bind(scope),
-   this.db.prepare('DELETE FROM revision_checks WHERE scope=?').bind(scope)
+   this.db.prepare(recordScoped?'DELETE FROM document_checks WHERE scope=?':'DELETE FROM revision_checks WHERE scope=?').bind(scope)
   ])}catch(e){if(String(e).includes('revision-conflict'))throw new HttpError(409,'记录刚在其他设备更新，请刷新后重试。','conflict');throw e}
-  snapshot.rev++;snapshot.rows=new Map(rows);
+  snapshot.rev=(snapshot.rev||0)+1;snapshot.rows=new Map(rows);
  }
  async read(scope,id){const row=await this.db.prepare('SELECT body FROM documents WHERE scope=? AND id=?').bind(scope,id).first();return row?JSON.parse(row.body):null}
  async throttle(key,limit=30,seconds=60){
@@ -51,13 +63,17 @@ export class Repository {
  async deleteBlob(id){await this.db.batch([this.db.prepare('DELETE FROM blob_parts WHERE id=?').bind(id),this.db.prepare('DELETE FROM blobs WHERE id=?').bind(id)])}
  async usage(owner){const r=await this.db.prepare('SELECT COALESCE(SUM(size),0) AS bytes,COUNT(*) AS count FROM blobs WHERE owner=?').bind(owner).first();return {...r,quotaBytes:20*1024*1024}}
 }
-const lifeArrays=['posts','messages','notifications','challenges'];
+const lifeArrays=['posts','messages','notifications','challenges','reports','feedback'];
 const lifeMaps=['people','assets','aiUsage','follows','blocks','bookmarks'];
 export function decodeLife(rows){const out={};for(const k of lifeArrays)out[k]=[];for(const k of lifeMaps)out[k]=Object.create(null);for(const [id,body] of rows){const i=id.indexOf(':'),kind=id.slice(0,i),key=id.slice(i+1);if(lifeArrays.includes(kind))out[kind].push(JSON.parse(body));else if(lifeMaps.includes(kind))out[kind][key]=JSON.parse(body)}for(const k of lifeArrays)out[k].sort((a,b)=>a.createdAt-b.createdAt||a.id.localeCompare(b.id));return out}
 export function encodeLife(db){const rows=new Map();for(const kind of lifeArrays)for(const item of db[kind]||[])rows.set(kind+':'+item.id,JSON.stringify(item));for(const kind of lifeMaps)for(const [key,value] of Object.entries(db[kind]||{}))rows.set(kind+':'+key,JSON.stringify(value));return rows}
-export async function lifeStorage(repo,owner,bucket){
- const snapshot=await repo.load('life');
- return {load:async()=>decodeLife(snapshot.rows),save:db=>repo.save(snapshot,encodeLife(db)),putAsset:(id,bytes,mime)=>repo.putBlob('life/'+id,owner,mime,new Uint8Array(bytes)),getAsset:async id=>{const meta=await repo.read('life','assets:'+id);if(meta?.storage==='r2'){if(!bucket||!meta.mime.startsWith('image/')||meta.size>20*1024*1024)throw new HttpError(413,'无法读取饮食照片。');const object=await bucket.get(meta.objectKey);if(!object)throw new HttpError(404,'素材不存在。');return new Uint8Array(await object.arrayBuffer())}return repo.getBlob('life/'+id)},deleteAsset:id=>repo.deleteBlob('life/'+id),readState:uid=>repo.read('state',uid),readWorkouts:async uid=>(await repo.read('state',uid))?.workouts||[],
+export async function lifeStorage(repo,owner,bucket,personal=false,feedParams=null,socialPath=null,socialParams=null,mutation=null){
+ const feed=feedParams?await feedSnapshot(repo,owner,feedParams):null;
+ const social=socialPath==='/api/life/people'?await peopleSnapshot(repo,owner,socialParams):socialPath?await socialSnapshot(repo,owner,socialPath,socialParams):null;
+ const write=mutation?await writeSnapshot(repo,owner,mutation.key,mutation.body):null;
+ const snapshot=write?.snapshot||social?.snapshot||feed?.snapshot||(personal?await repo.loadRecord('life','people:'+owner):await repo.load('life'));
+ if(personal){const {results}=await repo.db.prepare("SELECT id,body FROM documents WHERE scope='life' AND id LIKE 'assets:%' AND json_extract(body,'$.owner')=?").bind(owner).all();for(const row of results)snapshot.rows.set(row.id,row.body)}
+ return {...(write?{shareCounts:write.shareCounts}:{}),...(social?{postCounts:social.postCounts,peoplePage:social.peoplePage}:{}),...(feed?{feedIds:feed.feedIds,feedTotal:feed.feedTotal,shareCounts:feed.shareCounts}:{}),load:async()=>decodeLife(snapshot.rows),save:db=>repo.save(snapshot,encodeLife(db)),putAsset:(id,bytes,mime)=>repo.putBlob('life/'+id,owner,mime,new Uint8Array(bytes)),getAsset:async id=>{const meta=await repo.read('life','assets:'+id);if(meta?.storage==='r2'){if(!bucket||!meta.mime.startsWith('image/')||meta.size>20*1024*1024)throw new HttpError(413,'无法读取饮食照片。');const object=await bucket.get(meta.objectKey);if(!object)throw new HttpError(404,'素材不存在。');return new Uint8Array(await object.arrayBuffer())}return repo.getBlob('life/'+id)},deleteAsset:id=>repo.deleteBlob('life/'+id),readState:uid=>repo.read('state',uid),readWorkouts:async uid=>(await repo.read('state',uid))?.workouts||[],
  sendAsset:async(req,res,id,asset)=>{const r=await blobResponse(repo,'life/'+id,req.method,req.headers.range,asset);res.writeHead(r.status,Object.fromEntries(r.headers));res.end(req.method==='HEAD'?null:Buffer.from(await r.arrayBuffer()))}}
 }
 export async function blobResponse(repo,id,method,range,meta){
@@ -88,4 +104,22 @@ export async function unreadSummary(repo,viewer){
  (SELECT json_extract(body,'$.notificationPrefs.muted') FROM documents WHERE scope='life' AND id=?) AS muted FROM incoming n
  WHERE NOT EXISTS(SELECT 1 FROM documents b,json_each(b.body) x WHERE b.scope='life' AND ((b.id=? AND x.value=json_extract(n.body,'$.from')) OR (b.id='blocks:'||json_extract(n.body,'$.from') AND x.value=?)))`).bind(viewer,'people:'+viewer,'blocks:'+viewer,viewer).first();
  const messages=row?.muted?0:Number(row?.messages)||0,interactions=row?.muted?0:Number(row?.interactions)||0;return {total:messages+interactions,messages,interactions};
+}
+
+// Bulk acknowledgement is one D1 transaction, independent of the 90-document edit limit.
+// A receipt must belong to this recipient; later arrivals are outside its ordered boundary.
+export async function acknowledgeNotifications(repo,viewer,body){
+ const statements=[],now=Date.now();
+ if(body.id){const id='notifications:'+body.id,row=await repo.read('life',id);if(!row||row.to!==viewer)throw new HttpError(404,'消息不存在。');statements.push(repo.db.prepare("UPDATE documents SET body=json_set(body,'$.readAt',COALESCE(json_extract(body,'$.readAt'),?)) WHERE scope='life' AND id=? AND json_extract(body,'$.to')=?").bind(now,id,viewer))}
+ else {
+  if(!body.all&&!body.through)throw new HttpError(400,'请提供已查看消息的回执。');
+  for(const [kind,field] of [['notifications','notification'],['messages','message']]){
+   let receipt;
+   if(body.all){const row=await repo.db.prepare("SELECT body FROM documents WHERE scope='life' AND id LIKE ? AND json_extract(body,'$.to')=? ORDER BY json_extract(body,'$.createdAt') DESC,json_extract(body,'$.id') DESC LIMIT 1").bind(kind+':%',viewer).first();receipt=row?JSON.parse(row.body):null}
+   else if(body.through[field]){receipt=await repo.read('life',kind+':'+body.through[field]);if(!receipt||receipt.to!==viewer)throw new HttpError(400,'消息回执不可用，请刷新重试。')}
+   if(receipt)statements.push(repo.db.prepare("UPDATE documents SET body=json_set(body,'$.readAt',?) WHERE scope='life' AND id LIKE ? AND json_extract(body,'$.to')=? AND json_extract(body,'$.readAt') IS NULL AND (json_extract(body,'$.createdAt')<? OR (json_extract(body,'$.createdAt')=? AND json_extract(body,'$.id')<=?))").bind(now,kind+':%',viewer,receipt.createdAt,receipt.createdAt,receipt.id));
+  }
+ }
+ if(statements.length)await repo.db.batch([...statements,repo.db.prepare("INSERT INTO versions(scope,rev) VALUES('life',1) ON CONFLICT(scope) DO UPDATE SET rev=rev+1")]);
+ return {ok:true};
 }

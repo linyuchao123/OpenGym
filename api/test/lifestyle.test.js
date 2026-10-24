@@ -264,3 +264,21 @@ test('opening message center acknowledges its snapshot including DMs, preserving
  assert.equal((await h.request('unread')).data.total,0);
  assert.equal((await h.request('messages?with=bob')).data.messages.length,2);
 });
+
+test('growth fields, explicit external sharing and administrator-only moderation',async t=>{
+ const h=await fixture(t);
+ const first=await h.request('profile',{method:'PUT',body:{nickname:'Growth <script>',bio:'PRIVATE BIO',weightKg:75,fitnessGoal:'loss',trainingGoal:'strength',experience:'beginner',onboardingCompleted:true}});assert.equal(first.status,200);assert.equal(first.data.profile.fitnessGoal,'loss');assert.equal(first.data.profile.trainingGoal,'strength');
+ assert.equal((await h.request('share-config',{method:'POST',body:{enabled:true,fields:['weightKg'],consent:true}})).status,400);
+ const share=await h.request('share-config',{method:'POST',body:{enabled:true,fields:['nickname','growth'],consent:true}});assert.equal(share.status,200);const token=share.data.profile.externalShare.token;
+ let preview=await h.request('public-growth?token='+token,{user:null});assert.equal(preview.status,200);const html=Buffer.from(preview.data).toString();assert.ok(html.includes('&lt;script&gt;'));assert.ok(!html.includes('PRIVATE BIO'));assert.ok(!html.includes('75'));
+ await h.request('profile',{method:'PUT',body:{goal:'updated',externalShare:{enabled:false}}});assert.equal((await h.request('public-growth?token='+token,{user:null})).status,200);
+ await h.request('share-config',{method:'POST',body:{enabled:false}});assert.equal((await h.request('public-growth?token='+token,{user:null})).status,404);
+ const post=(await h.request('post',{method:'POST',body:{text:'需要讨论的训练问题',category:'question'}})).data.post;
+ const report=await h.request('report',{user:'bob',method:'POST',body:{kind:'post',id:post.id,reason:'测试举报原因'}});assert.equal(report.status,200);assert.equal((await h.request('admin/reports',{user:'bob'})).status,403);
+ assert.equal((await h.request('admin/reports')).data.reports.length,1);
+ assert.equal((await h.request('admin/reports',{method:'POST',body:{id:report.data.id,status:'resolved',note:'测试处理记录',removeContent:true}})).status,200);
+ assert.equal((await h.request('feed?post='+post.id)).data.posts.length,0);
+ const handled=(await h.request('admin/reports?status=resolved')).data.reports[0];assert.equal(handled.history.length,1);
+ assert.equal((await h.request('feedback',{user:'bob',method:'POST',body:{text:'首次训练入口还可以简化'}})).status,200);
+ assert.equal((await h.request('admin/feedback',{user:'bob'})).status,403);assert.equal((await h.request('admin/feedback')).data.feedback.length,1);
+});

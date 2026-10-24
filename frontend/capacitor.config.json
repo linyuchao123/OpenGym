@@ -1,6 +1,6 @@
 {
-  "appId": "ch.duartesantos.opengym",
-  "appName": "openGym",
+  "appId": "me.xiaolinyx.opengym",
+  "appName": "OpenGym 社区",
   "webDir": "dist",
   "backgroundColor": "#0c0e12",
   "android": {

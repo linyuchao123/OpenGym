@@ -1,3 +1,4 @@
+import GettingStarted from '../components/GettingStarted.jsx'
 import BodySummary from '../components/BodySummary.jsx'
 import {useNavigate} from 'react-router-dom'
 import RecordStatus from '../components/RecordStatus.jsx'
@@ -115,10 +116,7 @@ calendar:(<div className="card">
       {/* A coach week runs by order, not by weekday, so its progress row stands in for the
           seven dots (components/QueueRow.jsx). The today row below stays as it is: the queue's
           next session reaches it through effectiveRoutineIds like any planned routine. */}
-      {rotating ? (queue ? <QueueRow S={S} today={todayISO()} onStart={onQueueStart} managed={managedQueue} /> : <div className="empty">
-        {t('No rotation yet. Add routines to it in Plan.')}
-        <div style={{ marginTop: 10 }}><Button size="sm" variant="tinted" onClick={() => nav('/plan')}>{t('Set up in Plan')}</Button></div>
-      </div>) : <>
+      {rotating ? (queue ? <QueueRow S={S} today={todayISO()} onStart={onQueueStart} managed={managedQueue} /> : <button className="life-link" onClick={()=>nav('/plan')}>计划设置 · 添加或调整轮换</button>) : <>
         <div className="row between" style={{ marginBottom: 8 }}>
           <button className="iconbtn" style={{ width: 30, height: 30, fontSize: 15 }} onClick={() => setWeekOffset(w => w - 1)} aria-label={t('Previous week')}><Icon name="chevronLeft" /></button>
           <div className="small muted" style={{ fontWeight: 500 }}>{wkLabel}</div>
@@ -232,6 +230,8 @@ milestones:(<Milestones S={S} onRecord={workoutDetailSheet} onHistory={()=>nav('
       <button className="iconbtn" onClick={() => nav('/me')} aria-label={trouble ? t('Settings') + ', ' + t('Connection problem') : t('Settings')}><Icon name="gear" />{trouble && <span className="tab-dot" aria-hidden="true" />}</button>
     </div>
 
+    <section className="card home-next"><div><h2>{S.active?'继续训练':routine?'今天的训练':S.routines.length?'按自己的节奏开始':'开始第一条记录'}</h2><p>{S.active?S.active.name:routine?todayName:'休息日也可以记餐，手动记录始终可用。'}</p></div><button className="life-primary" onClick={()=>S.active?nav('/workout'):routine?onToday():S.routines.length?nav('/workout'):starterPlanSheet()}>{S.active?'恢复训练':routine?'开始今天训练':S.routines.length?'选择训练':'选择入门计划'}</button>{profile.trainingGoal==='loss'&&<button className="life-secondary" onClick={()=>nav('/nutrition')}>快捷记一餐</button>}</section>
+    <GettingStarted/>
     <button className="life-home-report" onClick={() => nav('/weekly-report')}><Icon name="chart"/><span>训练＋饮食周报</span><Icon name="chevronRight"/></button>
     <div className="life-home-shortcuts">{[['calendar','训练计划','/plan'],['chart','训练统计','/stats'],['dumbbell','动作库','/library']].map(([icon,label,path]) => <button key={path} onClick={() => nav(path)}><Icon name={icon} /><span>{label}</span></button>)}</div>
     <details className="life-sync-summary"><summary>数据保存状态</summary><RecordStatus/></details>

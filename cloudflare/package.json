@@ -1,6 +1,18 @@
 {
-  "name": "opengym-cloudflare", "private": true, "type": "module",
-  "scripts": { "dev": "wrangler dev --local", "build": "npm --prefix ../frontend run build && node ../scripts/catalogue/stage-media.mjs ../frontend/dist && node scripts/preflight.mjs && wrangler deploy --dry-run --outdir dist-worker", "deploy": "npm run build && wrangler deploy", "test": "node --test test/*.test.mjs", "db:local": "wrangler d1 migrations apply DB --local" },
-  "dependencies": { "@simplewebauthn/server": "^13.1.1" },
-  "devDependencies": { "wrangler": "^4.0.0" }
+  "name": "opengym-cloudflare",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --local",
+    "build": "npm --prefix ../frontend run build && node ../scripts/catalogue/stage-media.mjs ../frontend/dist && node scripts/preflight.mjs && wrangler deploy --dry-run --outdir dist-worker",
+    "deploy": "npm run build && wrangler deploy",
+    "test": "node --test --test-concurrency=1 test/*.test.mjs",
+    "db:local": "wrangler d1 migrations apply DB --local"
+  },
+  "dependencies": {
+    "@simplewebauthn/server": "^13.1.1"
+  },
+  "devDependencies": {
+    "wrangler": "^4.0.0"
+  }
 }

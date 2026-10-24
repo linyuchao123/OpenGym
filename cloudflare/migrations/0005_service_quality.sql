@@ -1,0 +1,2 @@
+-- Aggregate service health. No account identifiers, request bodies, IPs or media references.
+CREATE TABLE IF NOT EXISTS service_quality(hour TEXT NOT NULL,kind TEXT NOT NULL,samples INTEGER NOT NULL DEFAULT 0,failures INTEGER NOT NULL DEFAULT 0,conflicts INTEGER NOT NULL DEFAULT 0,total_ms INTEGER NOT NULL DEFAULT 0,max_ms INTEGER NOT NULL DEFAULT 0,rows_read INTEGER NOT NULL DEFAULT 0,rows_written INTEGER NOT NULL DEFAULT 0,queries INTEGER NOT NULL DEFAULT 0,PRIMARY KEY(hour,kind));
