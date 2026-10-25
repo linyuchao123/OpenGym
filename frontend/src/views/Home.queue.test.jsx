@@ -133,7 +133,7 @@ describe('Home — coach week progress row', () => {
     expect(host.querySelector('.week')).toBeNull()
     expect(host.querySelectorAll('.wday').length).toBe(0)
     expect(host.querySelector('.queue')).toBeNull()
-    expect(host.textContent).toContain('No rotation yet')
+    expect(host.textContent).toContain('计划设置 · 添加或调整轮换')
     expect(todayTitle()).toBe('Rest day')
     expect(host.querySelector('.today-row .ss')).toBeNull()
   })

@@ -5,7 +5,7 @@ import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
 import { startFlow } from './sheets.jsx'
 
-// Start opens the quick weigh-in unless Settings → During a workout → "Weigh in before
+// After the preview is confirmed, Start opens the quick weigh-in unless Settings → During a workout → "Weigh in before
 // workouts" is off (issue #137) — then the session begins at once, with no body weight on it.
 
 describe('the weigh-in before a workout is a setting', () => {
@@ -16,7 +16,7 @@ describe('the weigh-in before a workout is a setting', () => {
   })
 
   it('on (the default): Start opens the weigh-in and the session waits for it', () => {
-    act(() => startFlow([]))
+    act(() => startFlow([],{confirmed:true}))
     expect(useUI.getState().sheets).toHaveLength(1)
     expect(useUI.getState().sheets[0].locked).toBe(true)   // the required weigh-in, not a plain sheet
     expect(useStore.getState().S.active).toBeNull()
@@ -24,15 +24,15 @@ describe('the weigh-in before a workout is a setting', () => {
 
   it('a profile written before the setting existed still asks', () => {
     useStore.setState(s => { const S = { ...s.S }; delete S.weighIn; return { S } })
-    act(() => startFlow([]))
+    act(() => startFlow([],{confirmed:true}))
     expect(useUI.getState().sheets).toHaveLength(1)
     expect(useUI.getState().sheets[0].locked).toBe(true)
     expect(useStore.getState().S.active).toBeNull()
   })
 
-  it('off: Start begins the session at once, with no sheet and no body weight', () => {
+  it('off: confirmed Start begins the session at once, with no sheet and no body weight', () => {
     useStore.setState(s => ({ S: { ...s.S, weighIn: false } }))
-    act(() => startFlow([]))
+    act(() => startFlow([],{confirmed:true}))
     expect(useUI.getState().sheets).toHaveLength(0)
     const { active } = useStore.getState().S
     expect(active).not.toBeNull()

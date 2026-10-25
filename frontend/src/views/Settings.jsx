@@ -754,7 +754,7 @@ export default function Settings({ page = null, find = null, via = null }) {
       <Section title={t('On Home')}>
         {/* Membership QR codes on Home (views/CheckIn.jsx); off = no Home card, no route. */}
         <Row icon="qr" iconTint="var(--blue)" title={t('Gym check-in')}
-          subtitle={t('Show a card on Home with your membership QR codes.')}>
+          subtitle="在今日训练旁显示拍照或地点打卡，会员卡可在打卡页单独查看。">
           <Switch checked={S.checkIn !== false} onChange={v => update(s => { s.checkIn = v })} />
         </Row>
         {/* The Home summary is optional; hiding it leaves weight logging, history and Stats intact. */}

@@ -1,4 +1,5 @@
 import GettingStarted from '../components/GettingStarted.jsx'
+import WeightTrend from '../components/WeightTrend.jsx'
 import BodySummary from '../components/BodySummary.jsx'
 import {useNavigate} from 'react-router-dom'
 import RecordStatus from '../components/RecordStatus.jsx'
@@ -13,7 +14,6 @@ import { effectiveRoutines, effectiveRoutineIds, nextTrainingDay, lastBW, setsDo
 import { fmtNum, fmtDate, todayISO, isoOf, weekStartOf, weekDayOffset, DAYS, DAYN } from '../lib/format.js'
 import { t, dateLocale } from '../lib/i18n.js'
 import { bwSheet, goalSheet, dayOverrideSheet, calendarSheet, startFlow, starterPlanSheet, bwDeltaColor, weighInsSheet, workoutDetailSheet } from '../sheets.jsx'
-import LineChart from '../components/LineChart.jsx'
 import Icon from '../components/Icon.jsx'
 import QueueRow from '../components/QueueRow.jsx'
 import { queueOf, queueView, weekTally, pinState } from '../lib/queue.js'
@@ -102,7 +102,6 @@ export default function Home() {
   // The streak card's fraction: this calendar week's workouts over the weekdays with a plan, or,
   // in a coach week, the queue's sessions and your own days together (lib/queue.js weekTally).
   const { done: doneThisWeek, planned: plannedPerWeek } = weekTally(S, todayISO())
-  const bwPoints = S.bodyweight.slice(-30).map(b => ({ t: b.t || new Date(b.d).getTime(), y: b.w, d: b.d }))
 
   // today's session shown right under the week strip
   const onToday = () => { if (S.active) nav('/workout'); else if (todayRoutines.length) startFlow(effectiveRoutineIds(S, todayISO())); else dayOverrideSheet(todayISO()) }
@@ -162,20 +161,6 @@ calendar:(<div className="card">
     </div>),
 heatmap:(<section className="card life-heatmap"><div className="row between" style={{marginBottom:10}}><h2 style={{fontSize:17,margin:0}}>训练热力图</h2><div className="life-range-buttons" aria-label="训练热力图范围">{[[13,'近13周'],[53,'近一年']].map(([n,label])=><button key={n} aria-pressed={heatWeeks===n} onClick={()=>setHeatWeeks(n)}>{label}</button>)}</div></div><Heatmap weeks={heatWeeks} S={S} onDay={iso => calendarSheet(iso)} /><p className="small muted" style={{marginBottom:0}}>点击有记录的格子查看训练，横向滑动查看历史。</p></section>),
 progress:(<WeeklyProgress done={doneThisWeek} planned={plannedPerWeek} onDetails={()=>nav('/weekly-report')} onPlan={()=>nav('/plan')} />),
-checkin:(S.checkIn !== false && (
-      <div className="card tappable" style={{ cursor: 'pointer' }} {...tappable(() => nav('/checkin'))}>
-        <div className="row between">
-          <div className="row" style={{ gap: 9 }}>
-            <span className="lrow-i" style={{ background: 'var(--blue)' }}><Icon name="qr" /></span>
-            <div>
-              <div className="lbl2">{t('At the gym')}</div>
-              <div className="ttl">{t('Check in')}</div>
-            </div>
-          </div>
-          <Icon name="chevronRight" className="chev" />
-        </div>
-      </div>
-    )),
 welcome:(!S.routines.length && !S.active && !S.workouts.length && (
       <div className="card">
         <div className="row" style={{ gap: 10, marginBottom: 6 }}>
@@ -192,10 +177,10 @@ weight:(S.showWeightCard !== false && <div className="card">
         <h2 style={{ margin: 0 }}>{t('Body weight')}</h2>
         <div className="row" style={{ gap: 8 }}>
           <Button size="sm" icon="target" style={S.targetW ? { color: 'var(--yellow)' } : undefined} onClick={goalSheet}>{S.targetW ? fmtNum(S.targetW) : t('Goal')}</Button>
-          <Button size="sm" icon="plus" onClick={() => bwSheet()}>{t('Log')}</Button>
+          <Button size="sm" variant="primary" icon="plus" onClick={() => bwSheet()}>记录体重</Button>
         </div>
       </div>
-      <BodySummary/>{bw ? <>
+      <details className="weight-body-detail"><summary>身体资料与 BMI</summary><BodySummary/></details>{bw ? <>
         <div className="row" style={{ gap: 8, alignItems: 'baseline' }}>
           <div className="big">{fmtNum(bw.w)} <span className="muted" style={{ fontSize: '1rem' }}>{S.unit}</span></div>
           {/* only when it actually moved — an unchanged weight used to read as "− 0" */}
@@ -213,7 +198,7 @@ weight:(S.showWeightCard !== false && <div className="card">
             <span>{t('Goal')} {fmtNum(S.targetW)} {S.unit} · {Math.abs(S.targetW - bw.w) < 0.05 ? t('reached!') : t(S.targetW > bw.w ? '{0} to gain' : '{0} to lose', fmtNum(Math.abs(S.targetW - bw.w)) + ' ' + S.unit)}</span>
           </div>
         )}
-        <div className="chart" style={{ marginTop: 8 }}><LineChart points={bwPoints} h={130} unit={S.unit} goal={S.targetW} /></div>
+        <WeightTrend rows={S.bodyweight} unit={S.unit} goal={S.targetW}/>
         {/* every weigh-in, week by week with its average (Discord 'Weight') */}
         <div className="row" style={{ justifyContent: 'flex-end', marginTop: 4 }}>
           <Button size="sm" variant="ghost" trailingIcon="chevronRight" onClick={weighInsSheet}>{t('All weigh-ins')}</Button>
@@ -230,12 +215,12 @@ milestones:(<Milestones S={S} onRecord={workoutDetailSheet} onHistory={()=>nav('
       <button className="iconbtn" onClick={() => nav('/me')} aria-label={trouble ? t('Settings') + ', ' + t('Connection problem') : t('Settings')}><Icon name="gear" />{trouble && <span className="tab-dot" aria-hidden="true" />}</button>
     </div>
 
-    <section className="card home-next"><div><h2>{S.active?'继续训练':routine?'今天的训练':S.routines.length?'按自己的节奏开始':'开始第一条记录'}</h2><p>{S.active?S.active.name:routine?todayName:'休息日也可以记餐，手动记录始终可用。'}</p></div><button className="life-primary" onClick={()=>S.active?nav('/workout'):routine?onToday():S.routines.length?nav('/workout'):starterPlanSheet()}>{S.active?'恢复训练':routine?'开始今天训练':S.routines.length?'选择训练':'选择入门计划'}</button>{profile.trainingGoal==='loss'&&<button className="life-secondary" onClick={()=>nav('/nutrition')}>快捷记一餐</button>}</section>
+    <div className="home-action-deck"><section className="card home-next"><div><h2>{S.active?'继续训练':routine?'今天的训练':S.routines.length?'按自己的节奏开始':'开始第一条记录'}</h2><p>{S.active?S.active.name:routine?todayName:'休息日也可以记餐，手动记录始终可用。'}</p></div><button className="life-primary" onClick={()=>S.active?nav('/workout'):routine?onToday():S.routines.length?nav('/workout'):starterPlanSheet()}>{S.active?'恢复训练':routine?'开始今天训练':S.routines.length?'选择训练':'选择入门计划'}</button>{profile.trainingGoal==='loss'&&<button className="life-secondary" onClick={()=>nav('/nutrition')}>快捷记一餐</button>}</section>{S.checkIn!==false&&homeLayout(S.homeLayout).find(x=>x.id==='checkin')?.show&&<button className="card home-checkin" onClick={()=>nav('/checkin')}><Icon name="camera"/><strong>健身打卡</strong><span>拍照 / 地点</span><Icon name="chevronRight"/></button>}</div>
     <GettingStarted/>
     <button className="life-home-report" onClick={() => nav('/weekly-report')}><Icon name="chart"/><span>训练＋饮食周报</span><Icon name="chevronRight"/></button>
     <div className="life-home-shortcuts">{[['calendar','训练计划','/plan'],['chart','训练统计','/stats'],['dumbbell','动作库','/library']].map(([icon,label,path]) => <button key={path} onClick={() => nav(path)}><Icon name={icon} /><span>{label}</span></button>)}</div>
     <details className="life-sync-summary"><summary>数据保存状态</summary><RecordStatus/></details>
-    {homeLayout(S.homeLayout).filter(x=>x.show).map(x=><Fragment key={x.id}>{cards[x.id]}</Fragment>)}
+    {homeLayout(S.homeLayout).filter(x=>x.show&&x.id!=='checkin').map(x=><Fragment key={x.id}>{cards[x.id]}</Fragment>)}
     <button className="life-link" onClick={()=>nav('/home-layout')}>调整首页卡片顺序与显示</button>
   </div>
 }

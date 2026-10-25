@@ -43,7 +43,7 @@ async function handleRequest(request,env,stats){
    }
    if(key==='GET /api/life/unread'){const viewer=await mediaSession(repo,request);return json(await unreadSummary(repo,viewer.id))}
    if(['GET /api/life/asset','HEAD /api/life/asset'].includes(key)){const viewer=await mediaSession(repo,request);return await lifestyleAsset(repo,viewer.id,url.searchParams.get('id'),request,bucket)}
-   const personal=['/api/data','/api/data/rev','/api/life/me','/api/life/profile','/api/life/template','/api/life/meal','/api/life/notifications/prefs','/api/life/share-config'].includes(url.pathname);
+   const personal=['/api/data','/api/data/rev','/api/life/me','/api/life/profile','/api/life/template','/api/life/meal','/api/life/notifications/prefs','/api/life/share-config','/api/life/checkin','/api/life/nutrition-config','/api/life/food'].includes(url.pathname);
    const viewer=personal?await mediaSession(repo,request):null;
    const auth=viewer?{user:viewer,need:()=>viewer,route:async()=>null,getMember:id=>id===viewer.id?viewer:null}:url.pathname.startsWith('/api/life/')?await memberContext(repo,request):await authContext(repo,request,env);
    if(key==='GET /api/config')return json({invite_only:true,password_login:true,allow_guest:env.ALLOW_GUEST==='1',default_lang:'zh',hosting:bucket?'cloudflare-r2':'cloudflare-free',...(bucket?{fitnessPlanner:!!env.FOOD_AI_API_KEY,communityMedia:{multipart:true,partMB:5,imageMB:20,videoMB:200,audioMB:2,videoSec:0,quotaMB:1024,siteQuotaMB:8192}}:{}),media:{imageMB:2,gifMB:2,videoMB:2,videoSec:60,quotaMB:20,workouts:true},...(auth.user?{coach:null}:{}),cloudflare:{siteMediaMB:bucket?8192:100,mediaStore:bucket?'r2':'d1',passwordLogin:true,push:false}});

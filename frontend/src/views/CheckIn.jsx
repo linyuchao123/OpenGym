@@ -1,3 +1,4 @@
+import GymCheckIn from '../components/GymCheckIn.jsx'
 import { useLayoutEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useStore } from '../store/useStore.js'
@@ -36,7 +37,7 @@ export function moveGymCard(cards, from, to) {
 // or importing a photo only — never by typing a code, which is too easy to fat-finger into a
 // code that silently fails at the turnstile. An existing card can be edited (rename, re-scan), and
 // with more than one card each carries ◀ ▶ buttons to nudge its position along the rail.
-export default function CheckIn() {
+export function MembershipCards() {
   const nav = useNavigate()
   const cards = useStore(s => s.S.gymCards) || []
   const lastId = useStore(s => s.S.lastGymCardId)
@@ -259,3 +260,5 @@ function scanErrorMessage(e) {
   if (m === 'unsupported') return t('Scanning is not available on this device.')
   return t('Could not start the scanner')
 }
+
+export default function CheckIn(){return <GymCheckIn wallet={<MembershipCards/>}/> }

@@ -15,7 +15,7 @@ const fixture=fs.readFileSync(new URL('../../api/test/fixtures/lifestyle-apple.j
 process.env.CF_TEST_ORIGIN=origin;
 test('Cloudflare native runtime: private fitness app on local D1',async t=>{
  const dir=fs.mkdtempSync(path.join(os.tmpdir(),'gym-cf-test-'));
- let modelPayload;const model=http.createServer(async(req,res)=>{const chunks=[];for await(const c of req)chunks.push(c);modelPayload=JSON.parse(Buffer.concat(chunks));const q=JSON.parse(modelPayload.messages[1].content[0].text);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({direction:'recomp',summary:'渐进训练，BMI只作参考',guidance:'从轻重量开始',sessions:q.intake.days.map(day=>({day,name:'全身训练',exercises:[{id:'0662',sets:2,reps:10,restSec:60},{id:'1197',sets:2,reps:10,restSec:60}]}))})}}]}))});await new Promise(r=>model.listen(0,'127.0.0.1',r));t.after(()=>model.close());
+ let modelPayload;const model=http.createServer(async(req,res)=>{const chunks=[];for await(const c of req)chunks.push(c);modelPayload=JSON.parse(Buffer.concat(chunks));if(typeof modelPayload.messages[1].content==='string'){res.setHeader('Content-Type','application/json');return res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({layout:'editorial',palette:'green',headline:'认真记录慢慢进步'})}}]}))}const q=JSON.parse(modelPayload.messages[1].content[0].text);res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{content:JSON.stringify({direction:'recomp',summary:'渐进训练，BMI只作参考',guidance:'从轻重量开始',sessions:q.intake.days.map(day=>({day,name:'全身训练',exercises:[{id:'0662',sets:2,reps:10,restSec:60},{id:'1197',sets:2,reps:10,restSec:60}]}))})}}]}))});await new Promise(r=>model.listen(0,'127.0.0.1',r));t.after(()=>model.close());
  const wrangler=path.join(root,'node_modules/wrangler/bin/wrangler.js');
  // Keep the runtime fixture small; the full 13k-file package is checked by preflight.
  const assets=path.join(dir,'assets');fs.mkdirSync(path.join(assets,'exercise-media/clip'),{recursive:true});
@@ -56,6 +56,23 @@ test('Cloudflare native runtime: private fitness app on local D1',async t=>{
   for(let n=2;n<=10;n++)await signup('同码伙伴'+n,invite.data.invite.code);
   assert.equal((await request('POST','/api/register/options',{name:'eleventh',code:invite.data.invite.code})).status,403);
   const list=await request('GET','/api/admin/invites',null,alice.cookie);assert.equal(list.data.invites.find(i=>i.code===invite.data.invite.code).usedCount,10);
+ });
+ await t.test('wellness records use own D1 person, enforce media ownership and preserve target history',async()=>{
+  const photo=(await request('POST','/api/life/upload',new Uint8Array(fixture),alice.cookie)).data.id;
+  assert.equal((await request('POST','/api/life/checkin',{clientId:'foreign',photo},bob.cookie)).status,400);
+  const one=await request('POST','/api/life/checkin',{clientId:'retry',photo,place:'虚构健身房'},alice.cookie);assert.equal(one.status,200,JSON.stringify(one.data));
+  assert.equal((await request('POST','/api/life/checkin',{clientId:'retry',photo,place:'虚构健身房'},alice.cookie)).data.checkin.id,one.data.checkin.id);
+  assert.equal((await request('GET','/api/life/me',null,alice.cookie)).data.checkins.length,1);assert.equal((await request('GET','/api/life/me',null,bob.cookie)).data.checkins,undefined);
+  assert.equal((await request('GET','/api/life/asset?id='+photo,null,bob.cookie)).status,404);
+  const targets={daily:{calories:2000,protein:100,carbs:250,fat:60}};
+  const first=await request('PUT','/api/life/nutrition-config',{mode:'fixed',start:'2026-10-01',baseVersion:0,targets},alice.cookie);assert.equal(first.status,200,JSON.stringify(first.data));
+  assert.equal((await request('PUT','/api/life/nutrition-config',{mode:'fixed',start:'2026-10-25',baseVersion:0,targets},alice.cookie)).status,409);
+  assert.equal((await request('PUT','/api/life/nutrition-config',{mode:'fixed',start:'2026-10-25',baseVersion:first.data.nutritionConfig.version,targets},alice.cookie)).status,200);
+  assert.equal((await request('GET','/api/life/me',null,alice.cookie)).data.nutritionHistory[0].start,'2026-10-01');
+  const food=await request('POST','/api/life/food',{name:'自填食物',calories:100,protein:null,carbs:20,fat:1},alice.cookie);assert.equal(food.status,200);
+  assert.equal((await request('POST','/api/life/food',{...food.data.food,name:'越权'},bob.cookie)).status,404);
+  assert.equal((await request('POST','/api/life/report-layout',{summary:{}},alice.cookie)).status,400);
+  const report=await request('POST','/api/life/report-layout',{consent:true,summary:{workouts:3,sets:20,weightKg:70,photo:'private'}},alice.cookie);assert.equal(report.status,200,JSON.stringify(report.data));assert.equal(report.data.design.palette,'green');assert.equal(JSON.parse(modelPayload.messages[1].content).weightKg,undefined);assert.equal(JSON.parse(modelPayload.messages[1].content).photo,undefined);
  });
  await t.test('last invite place is consumed atomically; a full code can expand to 1000 without history loss',async()=>{
   const code=(await request('POST','/api/admin/invites/new',{},alice.cookie)).data.invite.code;

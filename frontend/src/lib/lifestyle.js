@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import {readLifeCache,changeLifeCache} from './lifestyle-cache.js'
 import { api, appBase } from './api.js'
 
-const empty = () => ({ profile: {}, profileBackup:null, meals: [], templates: [], ai: { configured: false } })
+const empty = () => ({ profile: {}, profileBackup:null, meals: [], checkins:[], foods:[], nutritionConfig:null,nutritionHistory:[], templates: [], ai: { configured: false } })
 let guestQueue = Promise.resolve(),profileQueue=Promise.resolve()
 async function guestDB() {
   return new Promise((resolve, reject) => {
@@ -62,7 +62,7 @@ export const useLifestyle = create((set, get) => ({
     const owner = get().owner
     const operation = guestQueue.catch(() => {}).then(async () => {
       if (owner !== 'guest' || get().owner !== owner) throw new Error('账号已切换，请重试。')
-      const next = structuredClone({ profile: get().profile, meals: get().meals, templates: get().templates || [], ai: get().ai })
+      const next = structuredClone({ profile: get().profile, meals: get().meals, templates: get().templates || [], checkins:get().checkins||[], foods:get().foods||[],nutritionConfig:get().nutritionConfig,nutritionHistory:get().nutritionHistory||[], ai: get().ai })
       const value = fn(next)
       await guestWrite(next)
       if (get().owner === owner) set(next)
@@ -71,6 +71,15 @@ export const useLifestyle = create((set, get) => ({
     guestQueue = operation
     return operation
   },
+  async saveWellness(kind,input) {
+    const owner=get().owner;if(!owner||get().loading||get().loadedOwner!==owner)throw Error('资料尚未加载完成，请稍后重试。');
+    const apply=(s,result)=>{if(kind==='checkin')s.checkins=[...(s.checkins||[]).filter(x=>x.id!==result.checkin.id),result.checkin];if(kind==='food')s.foods=[...(s.foods||[]).filter(x=>x.id!==result.food.id),result.food];if(kind==='nutrition-config'){s.nutritionHistory=[...(s.nutritionHistory||[]),...(s.nutritionConfig?[s.nutritionConfig]:[])];s.nutritionConfig=result.nutritionConfig}};
+    if(owner==='guest')return get().localChange(s=>{const field=kind==='checkin'?'checkin':kind==='food'?'food':'nutritionConfig',result={[field]:{...input,id:input.id||crypto.randomUUID(),at:Date.now(),version:Date.now()}};apply(s,result);return result});
+    const result=await api('/api/life/'+kind,{method:kind==='nutrition-config'?'PUT':'POST',body:JSON.stringify(input)});
+    if(get().owner===owner){set(s=>{const next={...s};apply(next,result);return next});try{await changeLifeCache(owner,c=>{apply(c,result);return c})}catch{set({cacheError:'已保存到服务器，本机缓存更新失败。'})}}
+    return result;
+  },
+  async deleteFood(id){const owner=get().owner;if(owner==='guest')return get().localChange(s=>{s.foods=(s.foods||[]).filter(x=>x.id!==id)});await api('/api/life/food',{method:'DELETE',body:JSON.stringify({id})});if(get().owner===owner){set(s=>({foods:(s.foods||[]).filter(f=>f.id!==id)}));try{await changeLifeCache(owner,c=>({...c,foods:(c.foods||[]).filter(f=>f.id!==id)}))}catch{}}},
   async saveProfile(profile) {
     const owner=get().owner;if(!owner)throw Error('请先登录并等待资料加载。');
     if(owner==='guest')return get().localChange(s=>{s.profile=profile});

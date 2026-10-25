@@ -1,3 +1,7 @@
+import {DataRing} from '../components/InsightCharts.jsx'
+import {NutritionPlan,FoodLibrary} from '../components/NutritionTools.jsx'
+import {targetForDate} from '../lib/nutrition-targets.js'
+import {effectiveRoutineIds} from '../lib/history.js'
 import {useModalHistory} from '../lib/route-origin.jsx'
 import { useRef, useState } from 'react'
 import { useLifestyle, assetURL, dataURL, imageBlob, uploadLifestyle } from '../lib/lifestyle.js'
@@ -19,7 +23,12 @@ export default function Nutrition() {
   const { meals, profile, ai, loading, error, owner, syncingMeals, pendingMeals=[], templates = [], saveTemplate, deleteTemplate, saveMeal, deleteMeal } = useLifestyle()
   const user = useStore(s => s.user)
   const [date, setDate] = useState(isoDate(new Date()))
-  const [mode, setMode] = useState('day')
+  const [mode, setMode] = useState('week')
+  const [tab,setTab]=useState('today')
+  const S=useStore(s=>s.S)
+  const nutritionConfig=useLifestyle(s=>s.nutritionConfig),nutritionHistory=useLifestyle(s=>s.nutritionHistory||[]),foods=useLifestyle(s=>s.foods||[])
+  const target=targetForDate(nutritionConfig,date,effectiveRoutineIds(S,date).length>0||(S.workouts||[]).some(w=>w.d===date),profile.calorieGoal,nutritionHistory)
+  const addFood=item=>{setReuseBase(null);setDraft({...freshMeal(date),items:[item]});setReviewed(false);setMessage('');setAiNote('')}
   const [draft, setDraft] = useState(null)
   const [busyLocal, setBusy] = useState(false)
   const busy=busyLocal||syncingMeals
@@ -43,6 +52,7 @@ export default function Nutrition() {
   const stats = nutritionStats(meals, date, mode)
   const daily = meals.filter(m => m.date === date).sort((a,b) => Object.keys(MEAL_TYPES).indexOf(a.type)-Object.keys(MEAL_TYPES).indexOf(b.type))
   const dayTotal = totals(daily)
+  const nutrientKnown=key=>daily.some(m=>(m.items||[]).some(i=>i[key]!=null&&i[key]!==''))
   const setField = (key, value) => setDraft(d => ({ ...d, [key]:value }))
   const editItem = (at, key, value) => { setDraft(d => ({ ...d, mealAdvice:'', items:d.items.map((x,i) => i === at ? { ...x,[key]:value,...(key==='grams'?{gramsSource:'manual'}:{}) } : x) })); setReviewed(false) }
   const choosePhoto = async e => {
@@ -75,38 +85,44 @@ export default function Nutrition() {
   const erase = async id => { setBusy(true); try { await deleteMeal(id); setRemove(''); setMessage('记录已删除。') } catch(e) { setMessage(e.message) } finally { setBusy(false) } }
   return <div className="narrow life-page life-nutrition">
     <header className="hdr"><div><h1>饮食</h1><div className="sub">好好吃饭，也记录每一份进步</div></div><button className="life-icon" aria-label="新增饮食记录" disabled={loading || busy} onClick={() => { setReuseBase(null); setDraft(freshMeal(date)); setMessage(''); setAiNote(''); setReviewed(false) }}><Icon name="plus" /></button></header>
-    <RecordStatus/>
+    <div className="nutrition-tabs" role="tablist" aria-label="饮食功能">{[['today','今日记录'],['plan','饮食计划'],['foods','食物库'],['trends','趋势']].map(([key,label],i)=><button key={key} id={'nutrition-tab-'+key} role="tab" aria-controls={'nutrition-panel-'+key} aria-selected={tab===key} tabIndex={tab===key?0:-1} onClick={()=>setTab(key)} onKeyDown={e=>{const keys=['today','plan','foods','trends'];let next;if(e.key==='ArrowRight')next=keys[(i+1)%4];if(e.key==='ArrowLeft')next=keys[(i+3)%4];if(e.key==='Home')next=keys[0];if(e.key==='End')next=keys[3];if(next){e.preventDefault();setTab(next);document.getElementById('nutrition-tab-'+next)?.focus()}}}>{label}</button>)}</div>
+    <details className="nutrition-sync"><summary>数据保存状态</summary><RecordStatus/></details>
     {!user && <p className="life-notice">当前是本机饮食日记，照片和记录保存在此浏览器。登录后使用服务器记录及 AI 识别；访客记录暂不会自动转入账号，可先导出备份。</p>}
     {error && <p className="life-error" role="alert">{error}</p>}
     {message && <p className="life-notice" role="status">{message}</p>}
-    <div className="life-nutrition-layout"><div className="life-nutrition-main"><div className="life-date"><label>查看日期<input type="date" aria-label="饮食日期" value={date} onChange={e => { if (e.target.value) setDate(e.target.value) }} /></label></div>
-    <section className="card life-energy"><div className="life-eyebrow">当日已记录热量</div><div className="life-calories">{daily.length?round(dayTotal.calories):'—'} <small>kcal</small></div><div className="small muted">千卡（也称大卡） · {daily.length} 餐</div>
-      {profile.calorieGoal > 0 ? <><progress max={profile.calorieGoal} value={Math.min(dayTotal.calories, profile.calorieGoal)} /><p className="small muted">自定目标 {profile.calorieGoal} kcal · {dayTotal.calories > profile.calorieGoal ? `超过 ${round(dayTotal.calories-profile.calorieGoal)}` : `还差 ${round(profile.calorieGoal-dayTotal.calories)}`} kcal</p></> : <p className="small muted">可在「我的 → 编辑资料」设置自己的每日热量目标</p>}
-      <div className="life-macros">{[['protein','蛋白质'],['carbs','碳水'],['fat','脂肪']].map(([key,label]) => <div key={key}><strong>{round(dayTotal[key])}<small> g</small></strong><span>已记录{label}</span></div>)}</div>
+    <div className="life-date"><label>查看日期<input type="date" aria-label="饮食日期" value={date} onChange={e=>{if(e.target.value)setDate(e.target.value)}}/></label></div>
+    <div role="tabpanel" id={'nutrition-panel-'+tab} aria-labelledby={'nutrition-tab-'+tab}>
+    {tab==='plan'&&<NutritionPlan date={date}/>}
+    <input ref={file} type="file" accept="image/*" className="life-hidden-input" aria-label="选择餐食照片" onChange={choosePhoto}/>
+    <div className="life-nutrition-layout nutrition-focused-layout"><div className="life-nutrition-main">
+    {tab==='foods'&&<FoodLibrary onUse={addFood}/>}
+    <div hidden={tab!=='today'}>
+    <section className="card life-energy nutrition-energy-v2"><div className="nutrition-energy-heading"><DataRing value={daily.length?round(dayTotal.calories):0} total={target.calories||1} label="已记录热量" suffix="kcal"/><div><span className="small muted">{target.label}</span><strong>{target.calories>0?target.calories+' kcal':'尚未设置'}</strong><p>{target.calories>0?(dayTotal.calories>target.calories?`记录比目标多 ${round(dayTotal.calories-target.calories)} kcal`:`距目标还差 ${round(target.calories-dayTotal.calories)} kcal`):'先记下今天的一餐，目标可稍后设置。'}</p><button className="life-link" onClick={()=>setTab('plan')}>调整饮食目标</button></div></div>
+      <div className="life-macros">{[['protein','蛋白质'],['carbs','碳水'],['fat','脂肪']].map(([key,label])=><div key={key}><span>{label}</span><strong>{nutrientKnown(key)?round(dayTotal[key]):'未填写'}<small>{target[key]>0?` / ${target[key]}`:''} g</small></strong>{target[key]>0&&nutrientKnown(key)&&<progress max={target[key]} value={Math.min(dayTotal[key],target[key])}/>}</div>)}</div><p className="small muted">{daily.length?'这里只汇总已记录部分，未记餐次可能影响差额。':'今天尚未记餐，0表示已记录量，不代表没有进食。'}</p>
     </section>
     <div className="life-actions"><button className="life-primary" disabled={loading || busy} onClick={() => { setReuseBase(null); setDraft(freshMeal(date)); setAiNote(''); setMessage(''); setReviewed(false) }}>＋ 记录一餐</button><button className="life-secondary" disabled={loading || busy} onClick={() => { setReuseBase(null); setDraft(freshMeal(date)); setAiNote(''); setMessage(''); setReviewed(false); file.current?.click() }}><Icon name="camera" />拍照 / 选照片</button></div>
-    <input ref={file} type="file" accept="image/*" className="life-hidden-input" aria-label="选择餐食照片" onChange={choosePhoto} />
-    <section className="card life-favorites"><div className="life-section-head"><h2>常吃餐，快速记</h2><button className="life-link" disabled={loading||busy} onClick={()=>setPreviousOpen(v=>!v)}>{previousOpen?'收起前一天':'复用前一天'}</button></div>
+    </div>
+    <details className="card life-favorites" hidden={tab!=='today'&&tab!=='foods'}><summary>常吃餐与快速复用 <small>收藏 {templates.length} 份</small></summary><div className="life-section-head"><h2>常吃餐，快速记</h2><button className="life-link" disabled={loading||busy} onClick={()=>setPreviousOpen(v=>!v)}>{previousOpen?'收起前一天':'复用前一天'}</button></div>
       <p className="small muted">收藏常吃的一餐，下次调整份量后再确认保存。</p>{templates.length?<div className="life-favorite-list">{templates.map(t=><div key={t.id} className="life-favorite-row"><button disabled={busy||loading} onClick={()=>openReuse(t)}><strong>{t.name}</strong><span>{t.items.map(i=>i.name).join(' · ')} · {round(totals([t]).calories)} kcal</span></button><button className="life-link" aria-label={'移除常吃餐 '+t.name} disabled={busy} onClick={()=>setDeleteFavorite(t.id)}>移除</button>{deleteFavorite===t.id&&<div className="life-notice">只移除常吃餐收藏，历史饮食记录保留。<div className="life-actions"><button disabled={busy} onClick={()=>removeFavorite(t.id)}>确认移除</button><button onClick={()=>setDeleteFavorite('')}>取消</button></div></div>}</div>)}</div>:<p className="small muted">保存第一餐后，点击记录上的「收藏为常吃餐」。</p>}
       {previousOpen&&<div className="life-previous-meals"><h3>{previousMealDate(date)} 的饮食</h3>{yesterday.length?yesterday.map(m=><button key={m.id} className="life-secondary" disabled={busy} onClick={()=>openReuse(m)}>{MEAL_TYPES[m.type]} · {m.items.map(i=>i.name).join('、')}</button>):<p className="small muted">前一天没有饮食记录，可手动新增一餐。</p>}</div>}
-    </section>
-    <section><div className="life-section-head"><h2>这一天吃了什么</h2><span className="small muted">{date}</span></div>{loading ? <div className="card muted">正在加载饮食记录…</div> : daily.length ? daily.map(meal => <article className="card life-meal" key={meal.id}>
+    </details>
+    <section hidden={tab!=='today'}><div className="nutrition-meal-slots">{Object.entries(MEAL_TYPES).map(([key,label])=>{const rows=daily.filter(m=>m.type===key);return <button key={key} disabled={loading||busy} onClick={()=>{setReuseBase(null);setDraft({...freshMeal(date),type:key});setReviewed(false);setMessage('');setAiNote('')}}><span>{label}</span><strong>{rows.length?round(totals(rows).calories)+' kcal':'还未记录'}</strong><small>＋ 记录{label}</small></button>})}</div><div className="life-section-head"><h2>这一天吃了什么</h2><span className="small muted">{date}</span></div>{loading ? <div className="card muted">正在加载饮食记录…</div> : daily.length ? daily.map(meal => <article className="card life-meal" key={meal.id}>
       {meal.photo && <img src={assetURL(meal.photo)} alt={`${MEAL_TYPES[meal.type]}餐食照片`} loading="lazy" />}
       <div className="life-section-head"><h3>{MEAL_TYPES[meal.type]}</h3><b>{round(totals([meal]).calories)} kcal</b></div>
       <p className="life-tag">{MEAL_STYLES[meal.mealStyle] || MEAL_STYLES.unknown}</p>{meal.styleReason && <p className="small muted">{meal.styleReason}</p>}<p>{meal.items.map(i=>i.name+(i.grams!=null?` ${i.grams}g`:'')).join(' · ')}</p>{meal.items.some(i=>i.advice) && <details><summary>每道菜的温馨建议</summary>{meal.items.filter(i=>i.advice).map((i,n)=><p className="small muted" key={n}><strong>{i.name}：</strong>{i.advice}</p>)}</details>}{meal.mealAdvice&&<div className="life-notice"><strong>整餐搭配参考</strong><p>{meal.mealAdvice}</p><small>生成时目标：{({gain:'增肌',loss:'减脂',maintain:'维持',habit:'记录习惯'})[meal.adviceGoal]||'记录习惯'} · AI 估算，请结合实际情况确认</small></div>}{meal.note && <p className="small muted">{meal.note}</p>}<span className="life-tag">{meal._pending?'本机已保存 · 等待同步':meal.source==='ai-reviewed'?'AI 估算 · 已确认':'手动记录'}</span>
       <div className="life-actions"><button className="life-secondary" disabled={busy} onClick={()=>openReuse(meal)}>复用这餐</button><button className="life-secondary" disabled={busy} onClick={()=>{setTemplateDraft(meal);setTemplateName(`${MEAL_TYPES[meal.type]} · ${meal.items[0]?.name || '我的常吃餐'}`.slice(0,60));setMessage('')}}>收藏为常吃餐</button></div><div className="life-meal-controls"><button onClick={() => { setReuseBase(null); setDraft(structuredClone(meal)); setAiNote(''); setReviewed(true); setMessage('') }}>编辑</button><button className="life-link danger" onClick={() => setRemove(meal.id)}>删除</button></div>
       {remove===meal.id && <div className="life-notice">删除这条饮食记录？<div className="life-actions"><button disabled={busy} onClick={() => erase(meal.id)}>确认删除</button><button onClick={() => setRemove('')}>取消</button></div></div>}
     </article>) : <div className="card life-empty"><Icon name="utensils" /><h3>今天的第一餐，从这里开始</h3><p>拍张照片，或手动写下食物和热量。</p></div>}</section>
-    <button className="life-link" onClick={() => { const blob=new Blob([JSON.stringify({profile,meals,templates},null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');a.href=url;a.download=`饮食记录-${isoDate(new Date())}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000) }}>导出饮食记录 JSON</button>
-    </div><aside className="life-nutrition-stats">    <section className="card"><div className="life-section-head"><h2>摄入趋势</h2><span className="small muted">{stats.days} 天有记录</span></div><div className="life-segments">{[['day','日'],['week','周'],['month','月'],['year','年']].map(([key,label]) => <button key={key} aria-pressed={mode===key} className={mode===key?'on':''} onClick={() => setMode(key)}>{label}</button>)}</div>
+    <button className="life-link" onClick={() => { const blob=new Blob([JSON.stringify({profile,meals,templates,foods,nutritionConfig,nutritionHistory},null,2)],{type:'application/json'}); const url=URL.createObjectURL(blob); const a=document.createElement('a');a.href=url;a.download=`饮食记录-${isoDate(new Date())}.json`;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000) }}>导出饮食记录 JSON</button>
+    </div><aside className="life-nutrition-stats" hidden={tab!=='trends'}>    <section className="card"><div className="life-section-head"><h2>摄入趋势</h2><span className="small muted">{stats.days} 天有记录</span></div><div className="life-segments">{[['day','日'],['week','周'],['month','月'],['year','年']].map(([key,label]) => <button key={key} aria-pressed={mode===key} className={mode===key?'on':''} onClick={() => setMode(key)}>{label}</button>)}</div>
       <div className="life-stat-pair"><div><span>总摄入</span><strong>{round(stats.total.calories)} <small>kcal</small></strong></div><div><span>有记录日均</span><strong>{stats.days?round(stats.average):'—'} <small>kcal</small></strong></div></div>
       {stats.days>0?<div className={'life-chart '+(mode==='month'?'dense':'')} aria-label="热量统计图">{stats.buckets.map(b => <div key={b.key} className="life-chart-col" title={`${b.label}：${round(b.calories)} kcal`}><div className="life-chart-track"><div style={{ height:`${b.calories ? Math.max(1,b.calories/Math.max(1,...stats.buckets.map(x=>x.calories))*100) : 0}%` }} /></div><span>{b.label}</span></div>)}</div>:<div className="life-chart-empty">这段时间还没有记录，记下一餐后就能看到摄入趋势。</div>}
       <p className="small muted">空白日期表示没有记录。日均只计算有记录的日期，不把漏记当作零摄入。</p>
       <button className="life-link" onClick={() => setExpanded(v=>!v)}>{expanded?'收起明细':'查看统计明细'}</button>
       {expanded && <div className="life-table-wrap"><table><caption>摄入统计 · kcal</caption><thead><tr><th>日期 / 餐次</th><th>热量</th></tr></thead><tbody>{stats.buckets.map(b => <tr key={b.key}><td>{mode==='day'?b.label:b.key}</td><td>{round(b.calories)}</td></tr>)}</tbody></table></div>}
     </section>
-    <CalorieHeatmap meals={meals} date={date} onDay={setDate} />
-</aside></div>
+    <CalorieHeatmap meals={meals} date={date} onDay={d=>{setDate(d);setTab('today')}} />
+</aside></div></div>
     {templateDraft && <div className="life-modal-backdrop"><section className="life-modal" role="dialog" aria-modal="true" aria-label="收藏常吃餐"><div className="life-section-head"><h2>收藏为常吃餐</h2><button className="life-icon" aria-label="关闭收藏" disabled={busy} onClick={()=>setTemplateDraft(null)}><Icon name="x"/></button></div><form className="life-form" onSubmit={favorite}><label>给这餐起个名字<input required maxLength={60} value={templateName} onChange={e=>setTemplateName(e.target.value)} placeholder="例如：我的日常早餐"/></label><p className="small muted">保存食物和营养数据，复用时不携带旧照片，也不会自动新增饮食记录。</p>{message&&<p role="alert" className="life-error">{message}</p>}<button className="life-primary" disabled={busy||!templateName.trim()}>保存常吃餐</button></form></section></div>}
     {draft && <div className="life-modal-backdrop"><section className="life-modal" role="dialog" aria-modal="true" aria-label="记录饮食"><div className="life-section-head"><h2>{draft.id?'编辑饮食':'记录一餐'}</h2><button className="life-icon" aria-label="关闭饮食编辑" disabled={busy} onClick={() => setDraft(null)}><Icon name="x" /></button></div>
       <form onSubmit={save} className="life-form">{reuseBase&&<div className="life-notice"><strong>复用一餐 · 保存前请核对</strong><label>份量倍数<input required type="number" min="0.25" max="10" step="0.25" value={factor} onChange={e=>{const value=e.target.value;setFactor(value);if(Number(value)>=.25&&Number(value)<=10){setDraft(d=>({...reuseMeal(reuseBase,d.date,Number(value)),type:d.type}));setReviewed(false)}}}/></label><p>先调整份量，再修改下方食物。倍数按原记录换算，实际烹饪和分量仍需核对。</p></div>}<div className="life-form-row"><label>日期<input type="date" required value={draft.date} onChange={e => setField('date',e.target.value)} /></label><label>餐次<select value={draft.type} onChange={e => setField('type',e.target.value)}>{Object.entries(MEAL_TYPES).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label></div>

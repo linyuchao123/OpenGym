@@ -79,11 +79,12 @@ export default function Heatmap({ S, onDay, metric: selectedMetric, onMetricChan
   return <>
     <Segmented value={metric} onChange={changeMetric}
       options={[{ value: 'time', label: t('Time') }, { value: 'vol', label: t('Volume') }]} />
-    <div className={"hm-wrap"+(weeks===13?" hm-fit":"")} style={{"--hm-weeks":weeks}} ref={wrapRef}>
-      <div className="hm-months" >{months}</div>
+    <div className={"hm-wrap hm-unified"+(weeks===13?" hm-quarter":"")} style={{"--hm-weeks":weeks}} ref={wrapRef}>
+      <div className="hm-canvas"><div className="hm-months" >{months}</div>
       <div className="hm-body">
         <div className="hm-days">{dayLabels.map((lbl, i) => <span key={i}>{lbl}</span>)}</div>
         <div className="hm-grid">{cols}</div>
+      </div>
       </div>
     </div>
     <div className="hm-legend">{t(metric === 'vol' ? 'Less volume' : 'Less time')} <div className="hm-c l0" /><div className="hm-c l1" /><div className="hm-c l2" /><div className="hm-c l3" /><div className="hm-c l4" /> {t(metric === 'vol' ? 'More volume' : 'More time')}</div>

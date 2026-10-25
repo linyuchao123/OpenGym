@@ -1,3 +1,4 @@
+import {wellnessRoutes} from './lifestyle-wellness.js';
 import {growthRoutes} from './lifestyle-growth.js';
 import {musicConnection,testMusicConnection} from './music-connection.js';
 import {generateFitnessPlan} from './fitness-planner.js';
@@ -266,6 +267,7 @@ export async function lifestyleRoutes({ dataDir, json, readBody, readSession, is
       finally { clearTimeout(timer); }
     }),
   };
+  Object.assign(routes,wellnessRoutes({wrap,getDB:()=>db,commit,person,json,readBody,aiConfig,reserveAI}));
   Object.assign(routes, creatorRoutes({wrap,getDB:()=>db,commit,publicPerson,serialize,json,readBody,isAdmin}));
   Object.assign(routes, extraRoutes({wrap,getDB:()=>db,commit,person,publicPerson,visiblePost,json,readBody,validDate,foodItems,text,readWorkouts:async uid=>{if(storage)return storage.readWorkouts(uid);try{const rows=JSON.parse(fs.readFileSync(path.join(dataDir,'state-'+uid.replace(/[^a-zA-Z0-9_-]/g,'')+'.json'),'utf8')).workouts;return Array.isArray(rows)?rows.filter(w=>w&&typeof w==='object'):[]}catch{return []}}}));
   Object.assign(routes, socialRoutes({ wrap, getDB: () => db, commit, publicPerson, json, readBody, getMember,postCounts:storage?.postCounts,peoplePage:storage?.peoplePage }));

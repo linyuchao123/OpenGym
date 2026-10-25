@@ -69,7 +69,7 @@ vi.mock('../components/CameraScan.jsx', () => ({ default: props => { mocks.camer
 // draw is the part that matters here, so the stub simply reflects it back into the DOM.
 vi.mock('../components/QrCanvas.jsx', () => ({ default: ({ value }) => <i data-qr={value} /> }))
 
-import CheckIn, { openAddCard, openEditCard } from './CheckIn.jsx'
+import { MembershipCards as CheckIn, openAddCard, openEditCard } from './CheckIn.jsx'
 
 /* ------------------------------- harness ------------------------------- */
 

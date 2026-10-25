@@ -1,3 +1,4 @@
+import {buildCombinedEntries} from '../lib/session-merge.js'
 import { Fragment, useEffect, useId, useRef, useState } from 'react'
 import WorkoutReference from '../components/WorkoutReference.jsx'
 import SwipeCards from '../components/SwipeCards.jsx'
@@ -59,6 +60,7 @@ function StartChooser() {
   const S = useStore(s => s.S)
   const todayIds = effectiveRoutineIds(S, todayISO())
   const todayRoutines = effectiveRoutines(S, todayISO())
+  const previewEntries=buildCombinedEntries(S,todayIds).entries
   const todayName = todayRoutines.map(r => r.name).join(' + ')
   const todayOvr = S.dayPlan[todayISO()] !== undefined && pinState(S, S.dayPlan[todayISO()]) !== 'done' // a fulfilled pin is no override
   const idSet = new Set(todayIds)
@@ -71,7 +73,9 @@ function StartChooser() {
         <div><div className="big">{todayName}</div><div className="muted small">{exCount(todayRoutines.reduce((n, r) => n + r.ex.length, 0))}</div></div>
         <span className="lrow-i" style={{ width: 38, height: 38, borderRadius: 9, fontSize: 22 }}><Icon name={glyphOf(todayRoutines[0].emoji)} /></span>
       </div>
-      <Button variant="primary" icon="play" onClick={() => startFlow(todayIds)}>{t('Start {0}', todayName)}</Button>
+      <p className="small muted">先确认下面的动作；点击正式开始后才启动计时。</p>
+      <ol className="workout-preview-list">{previewEntries.map((ex,i)=><li key={i}>{exerciseNameFor(exOr(ex.id))}<small> · {ex.sets?.length||0} 组（含计划热身）</small></li>)}</ol>
+      <Button variant="primary" icon="play" onClick={() => startFlow(todayIds,{confirmed:true})}>确认并开始计时</Button>
     </div>}
     {others.length > 0 && <><h4 className="sec">{t('Other routines')}</h4>
       <div className="list">{others.map(r => <div key={r.id} className="item" onClick={() => startFlow([r.id])}>

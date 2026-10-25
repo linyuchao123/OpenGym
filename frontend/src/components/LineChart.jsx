@@ -15,7 +15,7 @@ const W = 340   // viewBox width; the svg stretches to its container, height com
 //   series draws several lines instead of one: [{ points, color }] (issue #145, one per set
 //   number). `points` then only anchors the hover — one per date, its `note` the tooltip — and
 //   the y axis spans every series.
-export default function LineChart({ points, h = 150, unit = '', color = 'var(--acc)', axes = true, goal = null, invert = false, series = null }) {
+export default function LineChart({ points, h = 150, unit = '', color = 'var(--acc)', axes = true, goal = null, invert = false, series = null, label = '记录趋势' }) {
   const svgRef = useRef(null)
   const wrapRef = useRef(null)
   const tipRef = useRef(null)
@@ -126,7 +126,7 @@ export default function LineChart({ points, h = 150, unit = '', color = 'var(--a
       onMouseMove={onMove} onMouseDown={onMove}
       onMouseLeave={() => setHover(null)}
       onTouchStart={onMove} onTouchMove={onMove}>
-      <svg ref={svgRef} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ aspectRatio: `${W}/${H}` }}>
+      <svg ref={svgRef} role="img" aria-label={`${label}：${points.length}个实际记录点，${hoverDates[0]}至${hoverDates.at(-1)}；最早${fmtNum(points[0].y)}，最新${fmtNum(points.at(-1).y)} ${unit}`} viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ aspectRatio: `${W}/${H}` }}>
         <defs><linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0" stopColor={color} stopOpacity=".28" />
           <stop offset="1" stopColor={color} stopOpacity="0" />
@@ -146,7 +146,7 @@ export default function LineChart({ points, h = 150, unit = '', color = 'var(--a
             {s.points.map((p, i) => <circle key={i} cx={X(p.t)} cy={Y(p.y)} r={sw / 2 + 1.2} fill={s.color} />)}
           </g>
         }) : <>
-          <polygon points={`${P.l},${H - P.b} ${poly} ${X(last.t).toFixed(1)},${H - P.b}`} fill={`url(#${gid})`} />
+          {!single&&<polygon points={`${P.l},${H - P.b} ${poly} ${X(last.t).toFixed(1)},${H - P.b}`} fill={`url(#${gid})`} />}
           <polyline points={poly} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" />
           {marked && pts.map((p, i) => (p.m == null ? null :
             <circle key={'m' + i} cx={X(p.t)} cy={Y(p.y)} r={2.4 + p.m * 3} fill={color} opacity={0.3 + p.m * 0.7} />))}

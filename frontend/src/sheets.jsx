@@ -2770,7 +2770,13 @@ export function DayNoteRow({ iso, note }) {
 /* ============================ workout lifecycle ============================ */
 // `routineIds` accepts `string | string[] | null` — `[r.id]` for one routine,
 // `effectiveRoutineIds(...)` for today's planned session, `[]` / null for explicit freestyle.
-export function startFlow(routineIds) {
+export function startFlow(routineIds, {confirmed=false}={}) {
+  if(S().active){navToWorkout();return}
+  if(!confirmed){
+    const {entries,routines}=buildCombinedEntries(S(),routineIds)
+    useUI.getState().openSheet(close=><><h3>训练前确认</h3><p>{routines.map(r=>r.name).join(' + ')||'自由训练'}</p><p className="small muted">现在尚未计时，确认开始后才会创建训练。</p><ol className="workout-preview-list">{entries.map((e,i)=><li key={i}>{exerciseNameFor(exOr(e.id))}<small> · {e.sets?.length||0} 组</small></li>)}</ol>{!entries.length&&<p>开始后可以自行添加动作。</p>}<Button variant="primary" icon="play" onClick={()=>{close();startFlow(routineIds,{confirmed:true})}}>确认，正式开始</Button><Button variant="ghost" onClick={close}>暂不开始</Button></>)
+    return
+  }
   // The weigh-in is a setting (Settings → During a workout, issue #137): off goes straight
   // into the session with no body weight on it, same as "Start without weighing in".
   if (S().weighIn === false) { beginWorkout(routineIds, null); return }
@@ -2778,6 +2784,7 @@ export function startFlow(routineIds) {
 }
 export function beginWorkout(routineIds, bw) {
   const st = S()
+  if(st.active){navToWorkout();return}
   const { entries, routineIds: rids, routines } = buildCombinedEntries(st, routineIds)
   update(s => {
     s.active = {
