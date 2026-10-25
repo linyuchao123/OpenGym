@@ -1,3 +1,4 @@
+import Author,{Updates} from './views/Author.jsx'
 import {latestBody} from '../../api/shared/body-profile.js'
 import FitnessPlanner from './views/FitnessPlanner.jsx'
 import WelcomeGuide from './components/WelcomeGuide.jsx'
@@ -227,7 +228,7 @@ function Shell() {
         <ErrorBoundary>
           {!authed ? <Login /> : needsMobileOnboarding ? <MobileOnboarding /> : (
             <Routes>
-              <Route path="/home" element={<Home />} />
+              <Route path="/author" element={<Author/>}/><Route path="/updates" element={<Updates/>}/><Route path="/home" element={<Home />} />
               <Route path="/nutrition" element={<Nutrition key={user?.id || 'guest'} />} />
               <Route path="/community" element={<Community />} /><Route path="/community/post/:id" element={<PostViewer/>}/><Route path="/me/tools" element={<PersonalTools/>}/><Route path="/me/settings" element={<PersonalTools account/>}/>
               <Route path="/data-status" element={<DataStatus key={user?.id||'guest'}/>}/>

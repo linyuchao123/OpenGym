@@ -1,3 +1,4 @@
+import {timeGreeting} from '../lib/author.js'
 import GettingStarted from '../components/GettingStarted.jsx'
 import WeightTrend from '../components/WeightTrend.jsx'
 import BodySummary from '../components/BodySummary.jsx'
@@ -8,7 +9,7 @@ import {homeLayout} from '../lib/home-layout.js'
 import Heatmap from '../components/Heatmap.jsx'
 import Avatar from '../components/Avatar.jsx'
 import { useLifestyle } from '../lib/lifestyle.js'
-import { Fragment,useState } from 'react'
+import { Fragment,useState,useEffect } from 'react'
 import { useStore } from '../store/useStore.js'
 import { effectiveRoutines, effectiveRoutineIds, nextTrainingDay, lastBW, setsDoneActive } from '../lib/history.js'
 import { fmtNum, fmtDate, todayISO, isoOf, weekStartOf, weekDayOffset, DAYS, DAYN } from '../lib/format.js'
@@ -35,7 +36,8 @@ export default function Home() {
   const [heatWeeks,setHeatWeeks] = useState(13)
   const [weekOffset, setWeekOffset] = useState(0)
 
-  const today = new Date()
+  const [today,setToday] = useState(()=>new Date())
+  useEffect(()=>{const refresh=()=>setToday(new Date());const timer=setInterval(refresh,60000);document.addEventListener('visibilitychange',refresh);return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',refresh)}},[])
   // A weekday can hold several routines. `todayRoutines` is the whole day; `routine` is the
   // first, kept for the one-routine glyph. The derived session name joins them (§9).
   const todayRoutines = effectiveRoutines(S, todayISO())
@@ -211,15 +213,15 @@ milestones:(<Milestones S={S} onRecord={workoutDetailSheet} onHistory={()=>nav('
   }
   return <div className="narrow life-home">
     <div className="hdr">
-      <div className="life-home-identity"><button className="life-avatar-button" aria-label="打开我的主页并编辑头像" onClick={() => nav('/me')}><Avatar size={48} /></button><div><h1>{profile.nickname || user ? t('Hi {0}', profile.nickname || user?.name) : 'openGym'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div></div>
-      <button className="iconbtn" onClick={() => nav('/me')} aria-label={trouble ? t('Settings') + ', ' + t('Connection problem') : t('Settings')}><Icon name="gear" />{trouble && <span className="tab-dot" aria-hidden="true" />}</button>
+      <div className="life-home-identity"><button className="life-avatar-button" aria-label="打开我的主页并编辑头像" onClick={() => nav('/me')}><Avatar size={48} /></button><div><h1>{profile.nickname || user ? `${timeGreeting(today)}，${profile.nickname || user?.name || '朋友'}` : 'openGym'}</h1><div className="sub">{today.toLocaleDateString(dateLocale(), { weekday: 'long', day: 'numeric', month: 'long' })}</div></div></div>
+      <div className="home-header-actions"><button className="home-author-button" onClick={()=>nav('/author')}>认识作者</button><button className="iconbtn" onClick={() => nav('/me')} aria-label={trouble ? t('Settings') + ', ' + t('Connection problem') : t('Settings')}><Icon name="gear" />{trouble && <span className="tab-dot" aria-hidden="true" />}</button></div>
     </div>
 
     <div className="home-action-deck"><section className="card home-next"><div><h2>{S.active?'继续训练':routine?'今天的训练':S.routines.length?'按自己的节奏开始':'开始第一条记录'}</h2><p>{S.active?S.active.name:routine?todayName:'休息日也可以记餐，手动记录始终可用。'}</p></div><button className="life-primary" onClick={()=>S.active?nav('/workout'):routine?onToday():S.routines.length?nav('/workout'):starterPlanSheet()}>{S.active?'恢复训练':routine?'开始今天训练':S.routines.length?'选择训练':'选择入门计划'}</button>{profile.trainingGoal==='loss'&&<button className="life-secondary" onClick={()=>nav('/nutrition')}>快捷记一餐</button>}</section>{S.checkIn!==false&&homeLayout(S.homeLayout).find(x=>x.id==='checkin')?.show&&<button className="card home-checkin" onClick={()=>nav('/checkin')}><Icon name="camera"/><strong>健身打卡</strong><span>拍照 / 地点</span><Icon name="chevronRight"/></button>}</div>
     <GettingStarted/>
     <button className="life-home-report" onClick={() => nav('/weekly-report')}><Icon name="chart"/><span>训练＋饮食周报</span><Icon name="chevronRight"/></button>
     <div className="life-home-shortcuts">{[['calendar','训练计划','/plan'],['chart','训练统计','/stats'],['dumbbell','动作库','/library']].map(([icon,label,path]) => <button key={path} onClick={() => nav(path)}><Icon name={icon} /><span>{label}</span></button>)}</div>
-    <details className="life-sync-summary"><summary>数据保存状态</summary><RecordStatus/></details>
+    {user?.admin ? <details className="life-sync-summary"><summary>数据保存状态</summary><RecordStatus/></details> : <RecordStatus warningsOnly/>}
     {homeLayout(S.homeLayout).filter(x=>x.show&&x.id!=='checkin').map(x=><Fragment key={x.id}>{cards[x.id]}</Fragment>)}
     <button className="life-link" onClick={()=>nav('/home-layout')}>调整首页卡片顺序与显示</button>
   </div>

@@ -279,8 +279,10 @@ test('growth fields, explicit external sharing and administrator-only moderation
  assert.equal((await h.request('admin/reports',{method:'POST',body:{id:report.data.id,status:'resolved',note:'测试处理记录',removeContent:true}})).status,200);
  assert.equal((await h.request('feed?post='+post.id)).data.posts.length,0);
  const handled=(await h.request('admin/reports?status=resolved')).data.reports[0];assert.equal(handled.history.length,1);
- assert.equal((await h.request('feedback',{user:'bob',method:'POST',body:{text:'首次训练入口还可以简化'}})).status,200);
- assert.equal((await h.request('admin/feedback',{user:'bob'})).status,403);assert.equal((await h.request('admin/feedback')).data.feedback.length,1);
+ assert.equal((await h.request('feedback',{user:'bob',method:'POST',body:{text:'首次训练入口还可以简化',from:'admin',fromName:'forged'}})).status,200);
+ assert.equal((await h.request('admin/feedback',{user:'bob'})).status,403);const feedback=(await h.request('admin/feedback')).data.feedback;assert.equal(feedback.length,1);assert.equal(feedback[0].from,'bob');assert.notEqual(feedback[0].fromName,'forged');assert.ok(feedback[0].fromName);
+ for(let n=0;n<2;n++)assert.equal((await h.request('feedback',{user:'bob',method:'POST',body:{text:'补充反馈'}})).status,200);
+ assert.equal((await h.request('feedback',{user:'bob',method:'POST',body:{text:'第四条反馈'}})).status,429);
 });
 test('photo or named place check-ins stay private, preserve membership data and deduplicate retries',async t=>{
  const h=await fixture(t),photo=(await h.request('upload',{method:'POST',raw:jpg,type:'image/jpeg'})).data.id;

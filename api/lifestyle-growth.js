@@ -44,8 +44,8 @@ export function growthRoutes({wrap,getDB,commit,person,json,readBody,isAdmin,get
  'POST /api/life/feedback':wrap(async(req,res,u)=>{
   const b=await readBody(req),text=clean(b.text,1000);if(text.length<2)return fail(res,'请填写2至1000字反馈。');
   if(getDB().feedback.filter(f=>f.from===u.id&&f.createdAt>Date.now()-86400000).length>=3)return fail(res,'今日已提交3条反馈，谢谢参与。',429);
-  await commit(s=>s.feedback.push({id:crypto.randomUUID(),from:u.id,text,createdAt:Date.now(),status:'pending'}));json(res,200,{ok:true});
+  await commit(s=>s.feedback.push({id:crypto.randomUUID(),from:u.id,fromName:clean(getDB().people[u.id]?.profile?.nickname || getMember(u.id)?.name || '成员',80),text,createdAt:Date.now(),status:'pending'}));json(res,200,{ok:true});
  }),
- 'GET /api/life/admin/feedback':wrap(async(req,res,u)=>{if(!isAdmin(u))return fail(res,'仅管理员可查看。',403);json(res,200,{feedback:getDB().feedback.slice(-100).reverse()})})
+ 'GET /api/life/admin/feedback':wrap(async(req,res,u)=>{if(!isAdmin(u))return fail(res,'仅管理员可查看。',403);json(res,200,{feedback:getDB().feedback.slice(-100).reverse().map(f=>({...f,fromName:clean(getDB().people[f.from]?.profile?.nickname || getMember(f.from)?.name || f.fromName || '已离开的成员',80)}))})})
  };
 }

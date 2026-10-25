@@ -37,7 +37,7 @@ export default function TabBar({ onStart }) {
   if (!user && !isGuest) return null
   const cur = loc.pathname.split('/')[1] || 'home'
   const isRoot=['home','me','nutrition','community','workout'].includes(cur)&&loc.pathname.split('/').filter(Boolean).length===1
-  const on = k => !isRoot&&loc.state?.rootTab ? k===loc.state.rootTab : cur === k || (['members','member','messages','notifications','challenges'].includes(cur) && k === 'community') || (['plan','library','muscles','stats','history','structural-balance'].includes(cur) && k === 'home') || (['settings','weekly-report','home-layout','data-status','invite-friends'].includes(cur) && k === 'me')
+  const on = k => !isRoot&&loc.state?.rootTab ? k===loc.state.rootTab : cur === k || (['members','member','messages','notifications','challenges'].includes(cur) && k === 'community') || (['author','updates','plan','library','muscles','stats','history','structural-balance'].includes(cur) && k === 'home') || (['settings','weekly-report','home-layout','data-status','invite-friends'].includes(cur) && k === 'me')
 
   const running = !!S.active && cur !== 'workout' && !S.active.editingWorkoutId && !S.active.backfill && S.active.start > 0
   const startWorkout = () => {

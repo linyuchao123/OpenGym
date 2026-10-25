@@ -86,7 +86,7 @@ export default function Nutrition() {
   return <div className="narrow life-page life-nutrition">
     <header className="hdr"><div><h1>饮食</h1><div className="sub">好好吃饭，也记录每一份进步</div></div><button className="life-icon" aria-label="新增饮食记录" disabled={loading || busy} onClick={() => { setReuseBase(null); setDraft(freshMeal(date)); setMessage(''); setAiNote(''); setReviewed(false) }}><Icon name="plus" /></button></header>
     <div className="nutrition-tabs" role="tablist" aria-label="饮食功能">{[['today','今日记录'],['plan','饮食计划'],['foods','食物库'],['trends','趋势']].map(([key,label],i)=><button key={key} id={'nutrition-tab-'+key} role="tab" aria-controls={'nutrition-panel-'+key} aria-selected={tab===key} tabIndex={tab===key?0:-1} onClick={()=>setTab(key)} onKeyDown={e=>{const keys=['today','plan','foods','trends'];let next;if(e.key==='ArrowRight')next=keys[(i+1)%4];if(e.key==='ArrowLeft')next=keys[(i+3)%4];if(e.key==='Home')next=keys[0];if(e.key==='End')next=keys[3];if(next){e.preventDefault();setTab(next);document.getElementById('nutrition-tab-'+next)?.focus()}}}>{label}</button>)}</div>
-    <details className="nutrition-sync"><summary>数据保存状态</summary><RecordStatus/></details>
+    {user?.admin ? <details className="nutrition-sync"><summary>数据保存状态</summary><RecordStatus/></details> : <RecordStatus warningsOnly/>}
     {!user && <p className="life-notice">当前是本机饮食日记，照片和记录保存在此浏览器。登录后使用服务器记录及 AI 识别；访客记录暂不会自动转入账号，可先导出备份。</p>}
     {error && <p className="life-error" role="alert">{error}</p>}
     {message && <p className="life-notice" role="status">{message}</p>}
