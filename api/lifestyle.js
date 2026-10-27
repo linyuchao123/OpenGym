@@ -1,3 +1,4 @@
+import {nextRoutes,activeStatus} from './lifestyle-next.js';
 import {wellnessRoutes} from './lifestyle-wellness.js';
 import {growthRoutes} from './lifestyle-growth.js';
 import {musicConnection,testMusicConnection} from './music-connection.js';
@@ -13,7 +14,7 @@ import { socialRoutes } from './lifestyle-social.js';
 import { creatorRoutes, sanitizePresentation } from './lifestyle-creator.js';
 import { atomicWrite } from './durable.js';
 
-export async function lifestyleRoutes({ dataDir, json, readBody, readSession, isAdmin, storage, getMember, aiConfig = process.env }) {
+export async function lifestyleRoutes({ dataDir, json, readBody, readSession, isAdmin, storage, getMember, aiConfig = process.env, serviceConfig, onMessage }) {
   const dir = path.join(dataDir || '/tmp', 'lifestyle');
   const file = path.join(dir, 'records.json');
   if (!storage) fs.mkdirSync(path.join(dir, 'assets'), { recursive: true });
@@ -35,7 +36,7 @@ export async function lifestyleRoutes({ dataDir, json, readBody, readSession, is
   const text = (v, max) => typeof v === 'string' ? v.trim().slice(0, max) : '';
   const fail = (res, message, code = 400) => json(res, code, { error: message });
   const query = req => new URL(req.url, 'http://localhost').searchParams;
-  const publicPerson = uid => ({ id: uid, trainingGoal:db.people[uid]?.profile?.trainingGoal||db.people[uid]?.profile?.fitnessGoal||'habit',experience:db.people[uid]?.profile?.experience||'', ...publicBody(db.people[uid]?.profile), nickname: db.people[uid]?.profile?.nickname || getMember?.(uid)?.name || '健身伙伴', avatar: db.people[uid]?.profile?.avatar || '', bio: db.people[uid]?.profile?.bio || '', publicAchievements: db.people[uid]?.profile?.publicAchievements || '' });
+  const publicPerson = uid => ({ id: uid, currentStatus:activeStatus(db.people[uid]?.profile?.currentStatus), cover:db.people[uid]?.profile?.cover||'', trainingGoal:db.people[uid]?.profile?.trainingGoal||db.people[uid]?.profile?.fitnessGoal||'habit',experience:db.people[uid]?.profile?.experience||'', ...publicBody(db.people[uid]?.profile), nickname: db.people[uid]?.profile?.nickname || getMember?.(uid)?.name || '健身伙伴', avatar: db.people[uid]?.profile?.avatar || '', bio: db.people[uid]?.profile?.bio || '', publicAchievements: db.people[uid]?.profile?.publicAchievements || '' });
   const owned = (uid, ids) => Array.isArray(ids) && ids.length <= 6 && ids.every(id => typeof id === 'string' && db.assets[id]?.owner === uid);
   const visiblePost = id => db.posts.find(p => p.id === id && !p.deleted);
   const serialize = (p, uid, compact=false) => {
@@ -73,6 +74,8 @@ export async function lifestyleRoutes({ dataDir, json, readBody, readSession, is
       if (p.avatar.length > 180000 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(p.avatar)) return null;
       if (!validImage(Buffer.from(p.avatar.split(',')[1], 'base64'), 'image/jpeg')) return null;
     }
+    p.cover=typeof input.cover==='string'?input.cover:'';
+    if(p.cover&&(p.cover.length>350000||!/^data:image\/jpeg;base64,[A-Za-z0-9+/=]+$/.test(p.cover)||!validImage(Buffer.from(p.cover.split(',')[1],'base64'),'image/jpeg')))return null;
     return p;
   };
   const validDate = d => typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d) && !Number.isNaN(Date.parse(d)) && new Date(d).toISOString().slice(0, 10) === d;
@@ -107,7 +110,7 @@ export async function lifestyleRoutes({ dataDir, json, readBody, readSession, is
       // Merge explicitly supplied fields. Legacy weight-only PUT requests must not clear identity.
       const p=profileSafe({...old,...body});if(!p)return fail(res,'头像或个人信息格式不正确，请重新选择图片。');
       if(!p.nickname)p.nickname=text(u.name,30)||'健身伙伴';
-      await commit(s=>{person(s,u.id).profile={...p,externalShare:old.externalShare,version:Math.max(Date.now(),version+1),updatedAt:Date.now()}});
+      await commit(s=>{person(s,u.id).profile={...p,currentStatus:old.currentStatus,externalShare:old.externalShare,version:Math.max(Date.now(),version+1),updatedAt:Date.now()}});
       json(res,200,{profile:db.people[u.id].profile});
     }),
     'PATCH /api/life/profile': wrap(async(req,res,u)=>{
@@ -267,10 +270,11 @@ export async function lifestyleRoutes({ dataDir, json, readBody, readSession, is
       finally { clearTimeout(timer); }
     }),
   };
+  Object.assign(routes,nextRoutes({wrap,getDB:()=>db,commit,person,json,readBody,isAdmin,foodItems,validDate,serviceConfig}));
   Object.assign(routes,wellnessRoutes({wrap,getDB:()=>db,commit,person,json,readBody,aiConfig,reserveAI}));
   Object.assign(routes, creatorRoutes({wrap,getDB:()=>db,commit,publicPerson,serialize,json,readBody,isAdmin}));
   Object.assign(routes, extraRoutes({wrap,getDB:()=>db,commit,person,publicPerson,visiblePost,json,readBody,validDate,foodItems,text,readWorkouts:async uid=>{if(storage)return storage.readWorkouts(uid);try{const rows=JSON.parse(fs.readFileSync(path.join(dataDir,'state-'+uid.replace(/[^a-zA-Z0-9_-]/g,'')+'.json'),'utf8')).workouts;return Array.isArray(rows)?rows.filter(w=>w&&typeof w==='object'):[]}catch{return []}}}));
-  Object.assign(routes, socialRoutes({ wrap, getDB: () => db, commit, publicPerson, json, readBody, getMember,postCounts:storage?.postCounts,peoplePage:storage?.peoplePage }));
+  Object.assign(routes, socialRoutes({ wrap, getDB: () => db, commit, publicPerson, json, readBody, getMember,onMessage,postCounts:storage?.postCounts,likeCounts:storage?.likeCounts,peoplePage:storage?.peoplePage }));
   Object.assign(routes,growthRoutes({wrap,getDB:()=>db,commit,person,json,readBody,isAdmin,getMember,readState:async uid=>{if(storage)return await storage.readState(uid)||{};try{return JSON.parse(fs.readFileSync(path.join(dataDir,'state-'+uid.replace(/[^a-zA-Z0-9_-]/g,'')+'.json'),'utf8'))}catch{return {}}}}));
   routes['HEAD /api/life/asset'] = routes['GET /api/life/asset'];
   return routes;

@@ -1,3 +1,4 @@
+import {pushRoute,messagePush,duePush,pushReady} from './push-service.js';
 import {recordWritePaths} from './write-query.js';
 import {usageMetrics,communityMetrics} from '../../api/shared/usage-metrics.js';
 import {publicGrowth,growthHTML} from '../../api/shared/growth.js';
@@ -19,7 +20,7 @@ function bridge(request,bytes){
  let result;const res={writeHead(status,headers={}){this.status=status;this.headers=headers;return this},end(body){result=new Response(request.method==='HEAD'?null:body||null,{status:this.status||200,headers:this.headers||{}})},destroy(){throw new HttpError(500,'素材读取失败。')}};
  return {req,res,get response(){return result}};
 }
-async function handleRequest(request,env,stats){
+async function handleRequest(request,env,stats,ctx){
   const url=new URL(request.url),key=request.method+' '+url.pathname;
   if(url.pathname.startsWith('/exercise-media/clip/'))return exerciseClip(request,env.ASSETS);
   if(url.pathname.startsWith('/music/')&&url.pathname.endsWith('.mp3'))return exerciseClip(request,env.ASSETS,{music:true});
@@ -43,16 +44,18 @@ async function handleRequest(request,env,stats){
    }
    if(key==='GET /api/life/unread'){const viewer=await mediaSession(repo,request);return json(await unreadSummary(repo,viewer.id))}
    if(['GET /api/life/asset','HEAD /api/life/asset'].includes(key)){const viewer=await mediaSession(repo,request);return await lifestyleAsset(repo,viewer.id,url.searchParams.get('id'),request,bucket)}
-   const personal=['/api/data','/api/data/rev','/api/life/me','/api/life/profile','/api/life/template','/api/life/meal','/api/life/notifications/prefs','/api/life/share-config','/api/life/checkin','/api/life/nutrition-config','/api/life/food'].includes(url.pathname);
+   const personal=['/api/data','/api/data/rev','/api/life/me','/api/life/profile','/api/life/template','/api/life/meal','/api/life/notifications/prefs','/api/life/share-config','/api/life/checkin','/api/life/nutrition-config','/api/life/food','/api/life/status','/api/life/meal-plan','/api/life/meal-plan/record','/api/life/location-config','/api/life/admin/location-config','/api/life/location/resolve'].includes(url.pathname);
    const viewer=personal?await mediaSession(repo,request):null;
    const auth=viewer?{user:viewer,need:()=>viewer,route:async()=>null,getMember:id=>id===viewer.id?viewer:null}:url.pathname.startsWith('/api/life/')?await memberContext(repo,request):await authContext(repo,request,env);
-   if(key==='GET /api/config')return json({invite_only:true,password_login:true,allow_guest:env.ALLOW_GUEST==='1',default_lang:'zh',hosting:bucket?'cloudflare-r2':'cloudflare-free',...(bucket?{fitnessPlanner:!!env.FOOD_AI_API_KEY,communityMedia:{multipart:true,partMB:5,imageMB:20,videoMB:200,audioMB:2,videoSec:0,quotaMB:1024,siteQuotaMB:8192}}:{}),media:{imageMB:2,gifMB:2,videoMB:2,videoSec:60,quotaMB:20,workouts:true},...(auth.user?{coach:null}:{}),cloudflare:{siteMediaMB:bucket?8192:100,mediaStore:bucket?'r2':'d1',passwordLogin:true,push:false}});
+   if(key==='GET /api/config')return json({invite_only:true,password_login:true,allow_guest:env.ALLOW_GUEST==='1',default_lang:'zh',hosting:bucket?'cloudflare-r2':'cloudflare-free',...(bucket?{fitnessPlanner:!!env.FOOD_AI_API_KEY,communityMedia:{multipart:true,partMB:5,imageMB:20,videoMB:200,audioMB:2,videoSec:0,quotaMB:1024,siteQuotaMB:8192}}:{}),media:{imageMB:2,gifMB:2,videoMB:2,videoSec:60,quotaMB:20,workouts:true},...(auth.user?{coach:null}:{}),cloudflare:{siteMediaMB:bucket?8192:100,mediaStore:bucket?'r2':'d1',passwordLogin:true,push:pushReady(env)}});
    if(auth.user&&!url.pathname.startsWith('/api/uploads/')&&!url.pathname.includes('/asset')&&!url.pathname.startsWith('/api/media/')){const at=Date.now();await repo.db.prepare("INSERT INTO documents(scope,id,body) VALUES('activity',?,?) ON CONFLICT(scope,id) DO UPDATE SET body=excluded.body WHERE CAST(json_extract(documents.body,'$.at') AS INTEGER)<?").bind(auth.user.id,JSON.stringify({at}),at-300000).run();}
    const jsonBody=!['GET','HEAD'].includes(request.method)&&!/^\/api\/media\/[a-f0-9]{64}$/.test(url.pathname)&&url.pathname!=='/api/life/upload'&&!chunk;
    const body=jsonBody?await parseBody(request):{};
    const authReply=await auth.route(key,body);
    if(authReply){const {$cookie,...data}=authReply;return json(data,200,$cookie?{'Set-Cookie':$cookie}:{})}
    const u=auth.need();
+   if(url.pathname.startsWith('/api/push/'))return json(await pushRoute(repo,env,u,key,body,url));
+   if(key==='POST /api/life/location/resolve')await repo.throttle('location:'+u.id,10,60);
    if(key==='POST /api/life/notifications/read')return json(await acknowledgeNotifications(repo,u.id,body));
    if(url.pathname.startsWith('/api/uploads/'))return await r2UploadRoute(request,repo,bucket,u,body,boundedBody);
    if(key==='GET /api/data'||key==='GET /api/data/rev'){
@@ -87,7 +90,7 @@ async function handleRequest(request,env,stats){
    }
    if(['GET /api/life/asset','HEAD /api/life/asset'].includes(key))return await lifestyleAsset(repo,u.id,url.searchParams.get('id'),request,bucket);
    if(url.pathname.startsWith('/api/life/')){
-    const storage=await lifeStorage(repo,u.id,bucket,personal,key==='GET /api/life/feed'?url.searchParams:null,request.method==='GET'&&['/api/life/messages','/api/life/inbox','/api/life/notifications','/api/life/people'].includes(url.pathname)?url.pathname:null,url.searchParams,recordWritePaths.has(key)?{key,body}:null),routes=await lifestyleRoutes({storage,getMember:auth.getMember,aiConfig:env,json:(res,status,data,headers={})=>res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}).end(JSON.stringify(data)),readBody:async()=>body,readSession:()=>u,isAdmin:user=>user.admin===true});
+    const storage=await lifeStorage(repo,u.id,bucket,personal,key==='GET /api/life/feed'?url.searchParams:null,request.method==='GET'&&['/api/life/messages','/api/life/inbox','/api/life/notifications','/api/life/people'].includes(url.pathname)?url.pathname:null,url.searchParams,recordWritePaths.has(key)?{key,body}:null),routes=await lifestyleRoutes({storage,onMessage:async message=>{const promise=messagePush(repo,env,message);if(ctx?.waitUntil)ctx.waitUntil(promise);else await promise},serviceConfig:{read:()=>repo.read('settings','location'),write:async value=>{const old=await repo.loadRecord('settings','location');await repo.save(old,new Map([['location',JSON.stringify(value)]]))}},getMember:auth.getMember,aiConfig:env,json:(res,status,data,headers={})=>res.writeHead(status,{'Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store',...headers}).end(JSON.stringify(data)),readBody:async()=>body,readSession:()=>u,isAdmin:user=>user.admin===true});
     const handler=routes[key];if(!handler)throw new HttpError(404,'接口不存在。');
     const bytes=url.pathname==='/api/life/upload'?await boundedBody(request):null;
     if(bytes&&!validMedia(bytes,(request.headers.get('content-type')||'').split(';')[0]))throw new HttpError(400,'素材格式不正确。');
@@ -98,11 +101,11 @@ async function handleRequest(request,env,stats){
  }
 const nativeOrigins=new Set(['https://localhost','http://localhost','capacitor://localhost']);
 export default {
- async scheduled(event,env,ctx){if(env.MEDIA_STORE==='r2')ctx.waitUntil(cleanupUploads(new Repository(env.DB),env.MEDIA));ctx.waitUntil(env.DB.prepare("DELETE FROM service_quality WHERE hour<?").bind(new Date(Date.now()-60*86400000).toISOString().slice(0,13)).run())},
+ async scheduled(event,env,ctx){ctx.waitUntil(duePush(new Repository(env.DB),env));if(env.MEDIA_STORE==='r2')ctx.waitUntil(cleanupUploads(new Repository(env.DB),env.MEDIA));ctx.waitUntil(env.DB.prepare("DELETE FROM service_quality WHERE hour<?").bind(new Date(Date.now()-60*86400000).toISOString().slice(0,13)).run())},
  async fetch(request,env,ctx){
   const origin=request.headers.get('origin');
   if(request.method==='OPTIONS')return new Response(null,{status:nativeOrigins.has(origin)?204:403,headers:nativeOrigins.has(origin)?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Max-Age':'600','Vary':'Origin'}:{}});
-  const stats={rowsRead:0,rowsWritten:0,queries:0},started=Date.now(),source=await handleRequest(request,env,stats),p=new URL(request.url).pathname,response=nativeOrigins.has(origin)?new Response(source.body,{status:source.status,statusText:source.statusText,headers:source.headers}):source;
+  const stats={rowsRead:0,rowsWritten:0,queries:0},started=Date.now(),source=await handleRequest(request,env,stats,ctx),p=new URL(request.url).pathname,response=nativeOrigins.has(origin)?new Response(source.body,{status:source.status,statusText:source.statusText,headers:source.headers}):source;
   if(nativeOrigins.has(origin)){response.headers.set('Access-Control-Allow-Origin',origin);response.headers.set('Vary','Origin')}
   const kind=p.startsWith('/api/login/')||p.startsWith('/api/register/')?'login':p==='/api/data'&&request.method==='PUT'?'save-training':p==='/api/life/meal'&&request.method==='POST'?'save-meal':p.startsWith('/api/uploads/')&&request.method!=='GET'?'upload':p==='/api/life/feed'?'feed':null;
   if(kind&&env.DB&&ctx?.waitUntil){const ms=Date.now()-started;ctx.waitUntil(env.DB.prepare("INSERT INTO service_quality(hour,kind,samples,failures,conflicts,total_ms,max_ms,rows_read,rows_written,queries) VALUES(?,?,1,?,?,?,?,?,?,?) ON CONFLICT(hour,kind) DO UPDATE SET samples=samples+1,failures=failures+excluded.failures,conflicts=conflicts+excluded.conflicts,total_ms=total_ms+excluded.total_ms,max_ms=MAX(max_ms,excluded.max_ms),rows_read=rows_read+excluded.rows_read,rows_written=rows_written+excluded.rows_written,queries=queries+excluded.queries").bind(new Date().toISOString().slice(0,13),kind,response.status>=400?1:0,response.status===409?1:0,ms,ms,stats.rowsRead,stats.rowsWritten,stats.queries).run().catch(()=>console.error('service-quality-write-failed')))}

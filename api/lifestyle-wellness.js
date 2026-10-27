@@ -23,9 +23,9 @@ export function wellnessRoutes({wrap,getDB,commit,person,json,readBody,aiConfig,
   const old=(p.checkins||[]).find(x=>x.clientId===clientId);
   if(!old&&(p.checkins||[]).filter(x=>x.at>Date.now()-86400000).length>=10)return fail(res,'每天最多保存10次打卡。',429);
   if(!old&&(p.checkins||[]).length>=3650)return fail(res,'打卡已达3650条，请先导出备份。');
-  let location=null;if(b.location){const {lat,lon}=b.location;if(!amount(lat+90,180)||!amount(lon+180,360))return fail(res,'地点坐标不正确。');location={lat:Math.round(lat*1000)/1000,lon:Math.round(lon*1000)/1000};if(!place)return fail(res,'请填写地点名称。')}
-  if(old){if(old.photo!==photo||old.place!==place||JSON.stringify(old.location)!==JSON.stringify(location))return fail(res,'这次打卡已保存，但内容不同。请刷新核对后再新增，当前输入仍保留。',409);return json(res,200,{checkin:old})}
-  const checkin={id:crypto.randomUUID(),clientId,photo,place,location,at:Date.now(),source:'self-reported'};
+  let location=null;if(b.location){const {lat,lon}=b.location;if(!amount(lat+90,180)||!amount(lon+180,360))return fail(res,'地点坐标不正确。');location={lat:Math.round(lat*1000000)/1000000,lon:Math.round(lon*1000000)/1000000};if(!place)return fail(res,'请填写地点名称。')}
+  if(old){if((old.note||'')!==text(b.note,240)||old.photo!==photo||old.place!==place||JSON.stringify(old.location)!==JSON.stringify(location))return fail(res,'这次打卡已保存，但内容不同。请刷新核对后再新增，当前输入仍保留。',409);return json(res,200,{checkin:old})}
+  const checkin={id:crypto.randomUUID(),clientId,photo,place,location,note:text(b.note,240),at:Date.now(),source:'self-reported'};
   await commit(s=>{const p=person(s,u.id);p.checkins=[...(p.checkins||[]),checkin]});json(res,200,{checkin});
  }),
  'PUT /api/life/nutrition-config':wrap(async(req,res,u)=>{const b=await readBody(req),config=nutritionConfig(b),old=getDB().people[u.id]?.nutritionConfig;if(!config)return fail(res,'请检查计划日期与热量、营养素目标。');if(b.baseVersion!==(old?.version||0))return fail(res,'计划已更新，请刷新后再保存。',409);if((getDB().people[u.id]?.nutritionHistory||[]).length>=365)return fail(res,'已保存365次计划版本，请先导出备份。');config.version=Math.max(Date.now(),(old?.version||0)+1);await commit(s=>{const p=person(s,u.id);p.nutritionHistory=[...(p.nutritionHistory||[]),...(p.nutritionConfig?[p.nutritionConfig]:[])];p.nutritionConfig=config});json(res,200,{nutritionConfig:config});}),

@@ -4,7 +4,7 @@ import { create } from 'zustand'
 import {readLifeCache,changeLifeCache} from './lifestyle-cache.js'
 import { api, appBase } from './api.js'
 
-const empty = () => ({ profile: {}, profileBackup:null, meals: [], checkins:[], foods:[], nutritionConfig:null,nutritionHistory:[], templates: [], ai: { configured: false } })
+const empty = () => ({ profile: {}, profileBackup:null, meals: [], checkins:[], mealPlans:[], foods:[], nutritionConfig:null,nutritionHistory:[], templates: [], ai: { configured: false } })
 let guestQueue = Promise.resolve(),profileQueue=Promise.resolve()
 async function guestDB() {
   return new Promise((resolve, reject) => {
@@ -62,7 +62,7 @@ export const useLifestyle = create((set, get) => ({
     const owner = get().owner
     const operation = guestQueue.catch(() => {}).then(async () => {
       if (owner !== 'guest' || get().owner !== owner) throw new Error('账号已切换，请重试。')
-      const next = structuredClone({ profile: get().profile, meals: get().meals, templates: get().templates || [], checkins:get().checkins||[], foods:get().foods||[],nutritionConfig:get().nutritionConfig,nutritionHistory:get().nutritionHistory||[], ai: get().ai })
+      const next = structuredClone({ profile: get().profile, meals: get().meals, templates: get().templates || [], checkins:get().checkins||[], mealPlans:get().mealPlans||[], foods:get().foods||[],nutritionConfig:get().nutritionConfig,nutritionHistory:get().nutritionHistory||[], ai: get().ai })
       const value = fn(next)
       await guestWrite(next)
       if (get().owner === owner) set(next)
@@ -73,12 +73,19 @@ export const useLifestyle = create((set, get) => ({
   },
   async saveWellness(kind,input) {
     const owner=get().owner;if(!owner||get().loading||get().loadedOwner!==owner)throw Error('资料尚未加载完成，请稍后重试。');
-    const apply=(s,result)=>{if(kind==='checkin')s.checkins=[...(s.checkins||[]).filter(x=>x.id!==result.checkin.id),result.checkin];if(kind==='food')s.foods=[...(s.foods||[]).filter(x=>x.id!==result.food.id),result.food];if(kind==='nutrition-config'){s.nutritionHistory=[...(s.nutritionHistory||[]),...(s.nutritionConfig?[s.nutritionConfig]:[])];s.nutritionConfig=result.nutritionConfig}};
-    if(owner==='guest')return get().localChange(s=>{const field=kind==='checkin'?'checkin':kind==='food'?'food':'nutritionConfig',result={[field]:{...input,id:input.id||crypto.randomUUID(),at:Date.now(),version:Date.now()}};apply(s,result);return result});
+    const apply=(s,result)=>{if(kind==='checkin')s.checkins=[...(s.checkins||[]).filter(x=>x.id!==result.checkin.id),result.checkin];if(kind==='meal-plan')s.mealPlans=[...(s.mealPlans||[]).filter(x=>x.id!==result.plan.id),result.plan];if(kind==='meal-plan/record'){s.meals=[...(s.meals||[]).filter(x=>x.id!==result.meal.id),result.meal];s.mealPlans=(s.mealPlans||[]).filter(x=>x.id!==result.planId)}if(kind==='food')s.foods=[...(s.foods||[]).filter(x=>x.id!==result.food.id),result.food];if(kind==='nutrition-config'){s.nutritionHistory=[...(s.nutritionHistory||[]),...(s.nutritionConfig?[s.nutritionConfig]:[])];s.nutritionConfig=result.nutritionConfig}};
+    if(owner==='guest'&&kind==='meal-plan/record')return get().localChange(s=>{const plan=(s.mealPlans||[]).find(p=>p.id===input.id);if(!plan)throw Error('安排不存在。');if(plan.date>new Date().toLocaleDateString('en-CA'))throw Error('未来安排不能计入已吃记录。');const result={meal:{...plan,id:crypto.randomUUID(),source:'manual',createdAt:Date.now()},planId:plan.id};apply(s,result);return result});
+    if(owner==='guest')return get().localChange(s=>{const field=kind==='checkin'?'checkin':kind==='food'?'food':kind==='meal-plan'?'plan':'nutritionConfig',result={[field]:{...input,id:input.id||crypto.randomUUID(),at:Date.now(),version:Date.now()}};apply(s,result);return result});
     const result=await api('/api/life/'+kind,{method:kind==='nutrition-config'?'PUT':'POST',body:JSON.stringify(input)});
     if(get().owner===owner){set(s=>{const next={...s};apply(next,result);return next});try{await changeLifeCache(owner,c=>{apply(c,result);return c})}catch{set({cacheError:'已保存到服务器，本机缓存更新失败。'})}}
     return result;
   },
+  async saveStatus(input){
+    const owner=get().owner;if(!owner||owner==='guest')throw Error('登录后可发布状态。');
+    const {profile}=await api('/api/life/status',{method:'PUT',body:JSON.stringify(input)});
+    if(get().owner===owner){set(s=>({profile,profileSequence:s.profileSequence+1}));await changeLifeCache(owner,c=>({...c,profile})).catch(()=>{})}return profile;
+  },
+  async deleteMealPlan(id){const owner=get().owner;if(owner==='guest')return get().localChange(s=>{s.mealPlans=(s.mealPlans||[]).filter(x=>x.id!==id)});await api('/api/life/meal-plan',{method:'DELETE',body:JSON.stringify({id})});if(get().owner===owner){set(s=>({mealPlans:(s.mealPlans||[]).filter(x=>x.id!==id)}));await changeLifeCache(owner,c=>({...c,mealPlans:(c.mealPlans||[]).filter(x=>x.id!==id)})).catch(()=>{})}},
   async deleteFood(id){const owner=get().owner;if(owner==='guest')return get().localChange(s=>{s.foods=(s.foods||[]).filter(x=>x.id!==id)});await api('/api/life/food',{method:'DELETE',body:JSON.stringify({id})});if(get().owner===owner){set(s=>({foods:(s.foods||[]).filter(f=>f.id!==id)}));try{await changeLifeCache(owner,c=>({...c,foods:(c.foods||[]).filter(f=>f.id!==id)}))}catch{}}},
   async saveProfile(profile) {
     const owner=get().owner;if(!owner)throw Error('请先登录并等待资料加载。');
@@ -158,7 +165,7 @@ export async function uploadLifestyle(blob,options={}) {
   if(state.config?.communityMedia?.multipart)return uploadMultipart(blob,{...options,isCurrent:()=>useStore.getState().user?.id===owner})
   return api('/api/life/upload', { method: 'POST', headers: { 'Content-Type': blob.type }, body: blob })
 }
-export async function imageBlob(file, { avatar = false } = {}) {
+export async function imageBlob(file, { avatar = false, cover = false } = {}) {
   if (!file.type.startsWith('image/')) throw new Error('请选择图片文件。')
   if (file.size > 20 * 1024 * 1024) throw new Error('图片过大，请选择小于 20 MB 的照片。')
   const url = URL.createObjectURL(file)
@@ -170,6 +177,10 @@ export async function imageBlob(file, { avatar = false } = {}) {
       canvas.width = canvas.height = 256
       const side = Math.min(img.naturalWidth, img.naturalHeight)
       canvas.getContext('2d').drawImage(img, (img.naturalWidth-side)/2, (img.naturalHeight-side)/2, side, side, 0, 0, 256, 256)
+    } else if(cover) {
+      canvas.width=960;canvas.height=540
+      const scale=Math.max(960/img.naturalWidth,540/img.naturalHeight),w=img.naturalWidth*scale,h=img.naturalHeight*scale
+      canvas.getContext('2d').drawImage(img,(960-w)/2,(540-h)/2,w,h)
     } else {
       const scale = Math.min(1, 1280 / Math.max(img.naturalWidth, img.naturalHeight))
       canvas.width = Math.round(img.naturalWidth*scale); canvas.height = Math.round(img.naturalHeight*scale)

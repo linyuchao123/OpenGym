@@ -2,7 +2,7 @@ import {notify} from './lifestyle-extra.js';
 import crypto from 'node:crypto';
 
 // All queries are scoped to the authenticated member. Never expose nutrition or account fields.
-export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody, getMember,postCounts,peoplePage }) {
+export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody, getMember,onMessage,postCounts,likeCounts,peoplePage }) {
   const fail = (res, error, status = 400) => json(res, status, { error });
   const query = req => new URL(req.url, 'http://localhost').searchParams;
   const blocked = (a,b) => (getDB().blocks[a] || []).includes(b) || (getDB().blocks[b] || []).includes(a);
@@ -15,7 +15,7 @@ export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody
   const related = (id, relation, viewer=id) => candidates().filter(other=>other!==id && known(other) && !blocked(id,other) && !blocked(viewer,other) && (relation==='following'?following(id,other):following(other,id)));
   const member = (id, viewer) => ({ ...publicPerson(id), following: following(viewer,id), followsYou: following(id,viewer),
     blocked: (getDB().blocks[viewer] || []).includes(id), canChat: canChat(viewer,id),
-    followers: related(id,'followers',viewer).length, followingCount: related(id,'following',viewer).length, postCount:postCounts?.[id]??getDB().posts.filter(p=>p.uid===id&&!p.deleted).length });
+    followers: related(id,'followers',viewer).length, followingCount: related(id,'following',viewer).length, likesReceived:likeCounts?.[id]??getDB().posts.filter(p=>p.uid===id&&!p.deleted).reduce((n,p)=>n+(p.likes||[]).length,0), postCount:postCounts?.[id]??getDB().posts.filter(p=>p.uid===id&&!p.deleted).length });
   const participants = (m,a,b) => (m.from === a && m.to === b) || (m.from === b && m.to === a);
   const card = (id,viewer) => {
     const p=getDB().posts.find(p=>p.id===id&&!p.deleted&&!blocked(viewer,p.uid));
@@ -86,7 +86,7 @@ export function socialRoutes({ wrap, getDB, commit, publicPerson, json, readBody
       if (db.messages.filter(m=>m.from===u.id&&m.createdAt>Date.now()-60000).length>=30) return fail(res,'发送太频繁，请稍后再试。',429);
       if (db.messages.filter(m=>m.from===u.id).length>=30000) return fail(res,'私信存储已达上限。',413);
       const message = {id:crypto.randomUUID(),clientId:key,from:u.id,to:id,text,kind,...(postId?{postId}:{}),createdAt:Date.now(),readAt:null};
-      await commit(s=>{s.messages.push(message);notify(s,{to:id,from:u.id,kind:'message'})}); json(res,200,{message:messageFor(message,u.id)});
+      await commit(s=>{s.messages.push(message);notify(s,{to:id,from:u.id,kind:'message'})}); if(onMessage)await onMessage(message).catch(()=>{}); json(res,200,{message:messageFor(message,u.id)});
     }),
     'POST /api/life/messages/read': wrap(async(req,res,u)=>{
       const {with:id,through} = await readBody(req);

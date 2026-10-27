@@ -216,6 +216,7 @@ self.addEventListener('push', e => {
       icon: 'icon-512.png',
       badge: 'icon-180.png',
       tag,
+      data:{url:typeof data.url==='string'&&data.url.startsWith('/#/')?data.url:'/#/home'},
       renotify: true
     })
   })())
@@ -224,7 +225,8 @@ self.addEventListener('notificationclick', e => {
   e.notification.close()
   e.waitUntil(self.clients.matchAll({ type: 'window' }).then(clients => {
     const c = clients.find(c => 'focus' in c)
-    return c ? c.focus() : self.clients.openWindow('./')
+    const target=new URL(e.notification.data?.url||'/#/home',self.location.origin).href
+    return c ? c.navigate(target).then(()=>c.focus()) : self.clients.openWindow(target)
   }))
 })
 // The push service rotated the subscription (key change, expiry): subscribe again with the same

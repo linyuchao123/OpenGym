@@ -1,3 +1,4 @@
+import LocationConnection from '../components/LocationConnection.jsx'
 import {ModerationPanel,UsagePanel} from '../components/CommunitySafety.jsx'
 import {ReturnButton} from '../lib/route-origin.jsx'
 import { useEffect, useState } from 'react'
@@ -327,7 +328,7 @@ export default function Admin() {
 
     {/* The Coach setup. Renders nothing at all unless the instance offers the Coach, so an admin
         page on a box that never enabled it is byte-for-byte the page it was before. */}
-    <UsagePanel/><ModerationPanel/>
+    <UsagePanel/><LocationConnection/><ModerationPanel/>
     <AdminCoach />
 
     <InvitesCard invites={invites} reload={loadInvites} inviteOnly={inviteOnly} />
