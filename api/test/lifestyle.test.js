@@ -334,3 +334,19 @@ test('location configuration is admin-only and keys never reach members',async t
  assert.equal((await h.request('location/resolve',{method:'POST',body:{lat:31,lon:121}})).status,400);
  await h.request('admin/location-config',{method:'PUT',body:{clear:true}});assert.equal((await h.request('location/resolve',{method:'POST',body:{lat:31,lon:121,consent:true}})).status,503);
 });
+
+test('whole-day recipe saves four private plans atomically and retries do not recreate recorded plans',async t=>{
+ const h=await fixture(t),body={date:'2026-10-27',clientId:'recipe-retry-0001',meals:['breakfast','lunch','dinner','snack'].map(type=>({type,items:meal.items,note:'全天搭配'}))};
+ const invalid=structuredClone(body);invalid.meals[3].items=[null];assert.equal((await h.request('meal-plan/day',{method:'POST',body:invalid})).status,400);assert.equal(((await h.request('me')).data.mealPlans||[]).length,0);
+ const first=await h.request('meal-plan/day',{method:'POST',body});assert.equal(first.status,200);assert.equal(first.data.plans.length,4);assert.equal((await h.request('me')).data.meals.length,0);assert.equal(((await h.request('me',{user:'bob'})).data.mealPlans||[]).length,0);
+ const again=await h.request('meal-plan/day',{method:'POST',body});assert.deepEqual(again.data.plans.map(p=>p.id),first.data.plans.map(p=>p.id));
+ assert.equal((await h.request('meal-plan/day',{method:'POST',body:{...body,date:'2026-10-28'}})).status,409);
+ const plan=first.data.plans[0];assert.equal((await h.request('meal-plan/record',{method:'POST',body:{id:plan.id,version:plan.version}})).status,200);
+ assert.equal((await h.request('meal-plan/day',{method:'POST',body})).data.plans.length,3);assert.equal((await h.request('me')).data.meals.length,1);
+});
+test('nutrition program metadata survives without rewriting prior effective targets',async t=>{
+ const h=await fixture(t);const body={mode:'fixed',start:'2026-10-27',targets:{daily:{calories:2000,protein:130,carbs:230,fat:60}},direction:'shape',program:'balance',title:'力量训练＋均衡饮食',baseVersion:0};
+ const a=await h.request('nutrition-config',{method:'PUT',body});assert.equal(a.status,200);assert.equal(a.data.nutritionConfig.direction,'shape');assert.equal(a.data.nutritionConfig.title,body.title);
+ const b=await h.request('nutrition-config',{method:'PUT',body:{...body,start:'2026-10-28',direction:'health',title:'多样化三餐',baseVersion:a.data.nutritionConfig.version}});assert.equal(b.status,200);
+ const me=(await h.request('me')).data;assert.equal(me.nutritionHistory[0].title,body.title);assert.equal(me.nutritionConfig.direction,'health');
+});

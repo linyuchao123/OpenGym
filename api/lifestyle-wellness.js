@@ -6,7 +6,7 @@ export function nutritionConfig(input){
  if(!input||!['fixed','training-rest','weekly'].includes(input.mode)||!date(input.start))return null;
  const keys=input.mode==='fixed'?['daily']:input.mode==='training-rest'?['training','rest']:['0','1','2','3','4','5','6'];
  const targets={};for(const k of keys){const row=input.targets?.[k];if(!row||!amount(row.calories)||!['protein','carbs','fat'].every(f=>row[f]===null||amount(row[f],2000)))return null;targets[k]=Object.fromEntries(['calories','protein','carbs','fat'].map(f=>[f,row[f]]))}
- return {mode:input.mode,start:input.start,targets};
+ return {mode:input.mode,start:input.start,targets,...(['loss','gain','shape','health'].includes(input.direction)?{direction:input.direction,program:text(input.program,40),title:text(input.title,80)}:{})};
 }
 export async function reportLayout(summary,config,fetcher=fetch){
  const safe=Object.fromEntries(['workouts','trainingDays','minutes','sets','foodDays','meals','weightDays'].map(k=>[k,amount(summary?.[k],1000000)?summary[k]:0]));

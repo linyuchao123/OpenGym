@@ -74,6 +74,12 @@ test('Cloudflare native runtime: private fitness app on local D1',async t=>{
   assert.equal((await request('POST','/api/life/report-layout',{summary:{}},alice.cookie)).status,400);
   const report=await request('POST','/api/life/report-layout',{consent:true,summary:{workouts:3,sets:20,weightKg:70,photo:'private'}},alice.cookie);assert.equal(report.status,200,JSON.stringify(report.data));assert.equal(report.data.design.palette,'green');assert.equal(JSON.parse(modelPayload.messages[1].content).weightKg,undefined);assert.equal(JSON.parse(modelPayload.messages[1].content).photo,undefined);
  });
+ await t.test('whole-day food arrangements persist together in the own D1 document',async()=>{
+  const body={date:'2026-10-27',clientId:'cf-recipe-day-01',meals:['breakfast','lunch','dinner','snack'].map(type=>({type,items:[{name:'米饭',grams:100,calories:130,protein:2.7,carbs:28.2,fat:.3}]}))};
+  const saved=await request('POST','/api/life/meal-plan/day',body,alice.cookie);assert.equal(saved.status,200,JSON.stringify(saved.data));assert.equal(saved.data.plans.length,4);
+  const retry=await request('POST','/api/life/meal-plan/day',body,alice.cookie);assert.deepEqual(retry.data.plans.map(p=>p.id),saved.data.plans.map(p=>p.id));
+  assert.equal((await request('GET','/api/life/me',null,alice.cookie)).data.mealPlans.length,4);assert.equal((await request('GET','/api/life/me',null,bob.cookie)).data.mealPlans,undefined);
+ });
  await t.test('last invite place is consumed atomically; a full code can expand to 1000 without history loss',async()=>{
   const code=(await request('POST','/api/admin/invites/new',{},alice.cookie)).data.invite.code;
   assert.equal((await request('POST','/api/admin/invites/update',{code,maxUses:1},alice.cookie)).status,200);

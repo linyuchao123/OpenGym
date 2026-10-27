@@ -37,7 +37,7 @@ export function moveGymCard(cards, from, to) {
 // or importing a photo only — never by typing a code, which is too easy to fat-finger into a
 // code that silently fails at the turnstile. An existing card can be edited (rename, re-scan), and
 // with more than one card each carries ◀ ▶ buttons to nudge its position along the rail.
-export function MembershipCards() {
+export function MembershipCards({embedded=false}) {
   const nav = useNavigate()
   const cards = useStore(s => s.S.gymCards) || []
   const lastId = useStore(s => s.S.lastGymCardId)
@@ -70,13 +70,13 @@ export function MembershipCards() {
   }
 
   return <div className="narrow">
-    <div className="hdr">
+    {!embedded&&<div className="hdr">
       <button className="iconbtn" onClick={() => nav('/home')} aria-label={t('Home')}><Icon name="chevronLeft" /></button>
       <div style={{ flex: 1 }}>
         <h1 style={{ fontSize: 28 }}>{t('Check in')}</h1>
         <div className="sub">{cards.length ? t('Show this at the gym') : t('Add your gym card')}</div>
       </div>
-    </div>
+    </div>}
 
     <div className="ci-rail" ref={railRef} onScroll={onScroll}>
       {cards.map((card, i) => <CardFace
@@ -261,4 +261,4 @@ function scanErrorMessage(e) {
   return t('Could not start the scanner')
 }
 
-export default function CheckIn(){return <GymCheckIn wallet={<MembershipCards/>}/> }
+export default function CheckIn(){return <GymCheckIn wallet={<MembershipCards embedded/>}/> }

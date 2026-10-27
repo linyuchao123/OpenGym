@@ -7,6 +7,7 @@ import { startMediaSync } from './lib/media-sync.js'
 import { startNativeKeyboard } from './lib/native-keyboard.js'
 import './index.css'
 import './lifestyle.css'
+import './iteration.css'
 import { effectiveLang } from './lib/default-lang.js'
 import { baseLang, setLang } from './lib/i18n.js'
 

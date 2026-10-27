@@ -11,6 +11,17 @@ export function nextRoutes({wrap,getDB,commit,person,json,readBody,isAdmin,foodI
    await commit(s=>{const p=person(s,u.id);p.profile.currentStatus=value;p.profile.version=Math.max(Date.now(),(p.profile.version||0)+1);p.profile.updatedAt=Date.now()});
    json(res,200,{profile:getDB().people[u.id].profile});
   }),
+  'POST /api/life/meal-plan/day':wrap(async(req,res,u)=>{
+   const b=await readBody(req),key=txt(b.clientId,80),p=getDB().people[u.id]||{};
+   if(!/^[a-zA-Z0-9_-]{8,80}$/.test(key)||!validDate(b.date)||!Array.isArray(b.meals)||b.meals.length!==4)return fail(res,'请确认安排日期和四个餐次。');
+   const seen=new Set(),clean=b.meals.map(m=>{if(!m||!['breakfast','lunch','dinner','snack'].includes(m.type)||seen.has(m.type))return null;seen.add(m.type);const items=foodItems(m.items);return items?{date:b.date,type:m.type,items,note:txt(m.note,500)}:null});
+   if(clean.some(m=>!m))return fail(res,'请核对每餐食物与份量。');
+   const previous=p.mealPlanReceipts?.[key],signature=crypto.createHash('sha256').update(JSON.stringify(clean)).digest('hex');
+   if(previous){if(previous.signature!==signature)return fail(res,'这次安排已保存但内容不同，请刷新核对。',409);return json(res,200,{plans:(p.mealPlans||[]).filter(m=>previous.ids.includes(m.id)),replayed:true})}
+   if((p.mealPlans||[]).length+4>1000)return fail(res,'安排已达上限，请先整理历史记录。');
+   const stamp=Date.now(),plans=clean.map(m=>({...m,id:crypto.randomUUID(),version:stamp}));
+   await commit(s=>{const p=person(s,u.id);p.mealPlans=[...(p.mealPlans||[]),...plans];p.mealPlanReceipts||={};p.mealPlanReceipts[key]={ids:plans.map(m=>m.id),signature};for(const old of Object.keys(p.mealPlanReceipts).slice(0,-500))delete p.mealPlanReceipts[old]});json(res,200,{plans});
+  }),
   'POST /api/life/meal-plan':wrap(async(req,res,u)=>{
    const b=await readBody(req),items=foodItems(b.items),plans=getDB().people[u.id]?.mealPlans||[];
    if(!validDate(b.date)||!['breakfast','lunch','dinner','snack'].includes(b.type)||!items)return fail(res,'请确认日期、餐次和食物份量。');

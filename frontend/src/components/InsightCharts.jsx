@@ -17,6 +17,6 @@ export function MiniTrend({points,label,unit='',color='var(--acc)'}){
  return <figure className="insight-figure"><figcaption>{label} <small>{unit}</small></figcaption><svg className="insight-trend" viewBox="0 0 340 180" role="img" aria-label={points.map(p=>`${p.label} ${p.value==null?'未记录':p.value+' '+unit}`).join('；')}>
  {[low,high].filter((n,i,a)=>a.indexOf(n)===i).map(n=><g key={n}><line x1="48" x2="318" y1={Y({value:n})} y2={Y({value:n})} stroke="var(--sep)" strokeDasharray="3 4"/><text x="42" y={Y({value:n})+4} textAnchor="end">{Math.round(n*10)/10}</text></g>)}
  {segments.map((seg,i)=><g key={i}>{seg.length>1&&<polyline points={seg.map(p=>`${X(p)},${Y(p)}`).join(' ')} fill="none" stroke={color} strokeWidth="2.5" strokeLinejoin="round"/>}{seg.map(p=><g key={p.index}><circle cx={X(p)} cy={Y(p)} r="4" fill={color}/><title>{p.label}：{p.value} {unit}</title></g>)}</g>)}
- {points.map((p,i)=><text key={i} x={48+i/Math.max(1,points.length-1)*270} y="169" textAnchor="middle">{p.label}</text>)}
+ {points.map((p,i)=> (points.length<=12||i===0||i===points.length-1||i%Math.ceil(points.length/7)===0)&&<text key={i} x={48+i/Math.max(1,points.length-1)*270} y="169" textAnchor="middle">{p.label}</text>)}
  </svg></figure>
 }
