@@ -30,7 +30,7 @@ export async function deliverPush(repo,env,uid,payload){
  for(const row of rows.results){try{const response=await sendWebPush(JSON.parse(row.body),payload,keys(env));if(response.ok)sent++;if(response.status===404||response.status===410)await put(repo,'push',row.id,null)}catch{}}
  return {sent};
 }
-export async function messagePush(repo,env,message){const p=await repo.read('push-prefs',message.to);if(p?.messages)await deliverPush(repo,env,message.to,{title:'OpenGym · 新私信',body:'有伙伴给你发来了一条消息。',tag:'message',url:'/#/inbox'})}
+export async function messagePush(repo,env,message){const p=await repo.read('push-prefs',message.to);if(p?.messages)await deliverPush(repo,env,message.to,{title:'OpenGym · 新私信',body:'有伙伴给你发来了一条消息。',tag:'message',url:'/#/messages'})}
 export async function duePush(repo,env){
  if(!ready(env))return;
  const now=Date.now(),rows=await repo.db.prepare("SELECT id,body FROM documents WHERE scope='push-prefs' AND CAST(json_extract(body,'$.reminderAt') AS INTEGER)>0 AND CAST(json_extract(body,'$.reminderAt') AS INTEGER)<=? ORDER BY CAST(json_extract(body,'$.reminderAt') AS INTEGER) LIMIT 1").bind(now).all();

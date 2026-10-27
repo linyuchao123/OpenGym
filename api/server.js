@@ -2591,7 +2591,7 @@ const routes = {
     json(res, 200, { ok: true });
   },
 
-  ...await lifestyleRoutes({ onMessage:async m=>{await sendPush(m.to,{title:'OpenGym · 新私信',body:'有伙伴给你发来了一条消息。',tag:'message',url:'/#/inbox'})}, dataDir: DATA, json, readBody, readSession, isAdmin, getMember:id=>{const u=db.users.find(u=>u.id===id&&!u.disabled);return u?{id:u.id,name:u.name}:null} }),
+  ...await lifestyleRoutes({ onMessage:async m=>{await sendPush(m.to,{title:'OpenGym · 新私信',body:'有伙伴给你发来了一条消息。',tag:'message',url:'/#/messages'})}, dataDir: DATA, json, readBody, readSession, isAdmin, getMember:id=>{const u=db.users.find(u=>u.id===id&&!u.disabled);return u?{id:u.id,name:u.name}:null} }),
 
   /* ---------- AI Coach ---------- */
   // Routes live in coach/routes.js and are handed the helpers above rather than importing
