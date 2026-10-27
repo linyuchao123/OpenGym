@@ -22,7 +22,7 @@ Original editorial links are stored alongside the cards in `frontend/src/lib/nut
 
 ## Validation
 
-- Frontend: 85 tests passed across 10 relevant suites (nutrition, history, offline persistence, check-in wallet, media, growth and navigation).
+- Frontend: 86 tests passed across 10 relevant suites (nutrition, history, offline persistence, check-in wallet, media, growth and navigation).
 - Node API: 28 tests passed, including four-meal atomic validation, retry deduplication, recording conversion, private account isolation and nutrition metadata history.
 - Cloudflare: 52 tests passed against local D1/R2/runtime, including the new day-plan persistence route.
 - Production frontend build passed. Existing bundle/dynamic-import notices remain.
