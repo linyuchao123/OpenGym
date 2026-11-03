@@ -57,13 +57,14 @@ const readyWorker = (ms = 8000) => Promise.race([
 
 const register = sub => api('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription: sub.toJSON(), deviceId: deviceId() }) })
 
-export async function enablePush() {
+export async function preparePush(){const [reg,{key}]=await Promise.all([readyWorker(),api('/api/push/public-key')]);return {reg,key}}
+
+export async function enablePush(prepared) {
   if (!pushSupported()) throw new Error('此浏览器暂不支持通知。iPhone 请先添加到主屏幕，再从主屏幕图标打开。')
   if(Notification.permission==='denied')throw new Error('系统已拒绝本站通知。请在系统或浏览器设置中允许通知后重试。')
   const perm = await Notification.requestPermission()
   if (perm !== 'granted') throw new Error('通知授权尚未完成，请在系统弹窗中选择允许。')
-  const reg = await readyWorker()
-  const { key } = await api('/api/push/public-key')
+  const {reg,key}=await (prepared||preparePush())
   const subscription = await reg.pushManager.getSubscription() || await Promise.race([reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(key) }),new Promise((_,reject)=>setTimeout(()=>reject(Error('系统订阅请求超时，请检查网络和通知权限后重试。')),15000))])
   await shareDeviceId()
   await register(subscription)

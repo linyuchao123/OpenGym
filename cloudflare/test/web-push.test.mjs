@@ -15,7 +15,7 @@ import {pushRoute,duePush,messagePush} from '../src/push-service.js';
 function memoryRepo(){const store=new Map();return {store,read:async(s,id)=>store.get(s+':'+id)||null,loadRecord:async(s,id)=>({scope:s,id}),save:async(s,rows)=>{if(rows.size)store.set(s.scope+':'+s.id,JSON.parse([...rows.values()][0]));else store.delete(s.scope+':'+s.id)},db:{prepare:()=>({bind:()=>({first:async()=>({n:0}),all:async()=>({results:[]})})})}}}
 test('notification preferences are opt-in, user scoped, validate time, and preserve independent choices',async()=>{
  const repo=memoryRepo(),env={WEB_PUSH_PUBLIC_KEY:'fixture',WEB_PUSH_PRIVATE_KEY:'fixture'},u={id:'alice'},url=new URL('https://example.com/api/push/preferences');
- assert.deepEqual((await pushRoute(repo,env,u,'GET /api/push/preferences',{},url)).preferences,{messages:false,reminderAt:null});
+ assert.deepEqual((await pushRoute(repo,env,u,'GET /api/push/preferences',{},url)).preferences,{messages:false,reminderAt:null,planReminder:{enabled:false,time:''}});
  const at=Date.now()+600000;await pushRoute(repo,env,u,'PUT /api/push/preferences',{messages:true,reminderAt:at,tz:'Asia/Shanghai'},url);
  assert.equal((await repo.read('push-prefs','alice')).reminderAt,at);assert.equal(await repo.read('push-prefs','bob'),null);
  await assert.rejects(pushRoute(repo,env,u,'PUT /api/push/preferences',{messages:true,reminderAt:Date.now()-1},url),/请选择/);

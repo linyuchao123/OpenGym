@@ -101,7 +101,7 @@ async function handleRequest(request,env,stats,ctx){
  }
 const nativeOrigins=new Set(['https://localhost','http://localhost','capacitor://localhost']);
 export default {
- async scheduled(event,env,ctx){ctx.waitUntil(duePush(new Repository(env.DB),env));if(env.MEDIA_STORE==='r2')ctx.waitUntil(cleanupUploads(new Repository(env.DB),env.MEDIA));ctx.waitUntil(env.DB.prepare("DELETE FROM service_quality WHERE hour<?").bind(new Date(Date.now()-60*86400000).toISOString().slice(0,13)).run())},
+ async scheduled(event,env,ctx){ctx.waitUntil(duePush(new Repository(env.DB),env,event.scheduledTime||Date.now()));if(Math.floor((event.scheduledTime||Date.now())/60000)%5===0){if(env.MEDIA_STORE==='r2')ctx.waitUntil(cleanupUploads(new Repository(env.DB),env.MEDIA));ctx.waitUntil(env.DB.prepare("DELETE FROM service_quality WHERE hour<?").bind(new Date(Date.now()-60*86400000).toISOString().slice(0,13)).run())}},
  async fetch(request,env,ctx){
   const origin=request.headers.get('origin');
   if(request.method==='OPTIONS')return new Response(null,{status:nativeOrigins.has(origin)?204:403,headers:nativeOrigins.has(origin)?{'Access-Control-Allow-Origin':origin,'Access-Control-Allow-Methods':'GET,POST,PUT,PATCH,DELETE,HEAD,OPTIONS','Access-Control-Allow-Headers':'Content-Type, Authorization','Access-Control-Max-Age':'600','Vary':'Origin'}:{}});
