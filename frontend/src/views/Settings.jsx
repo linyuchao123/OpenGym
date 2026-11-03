@@ -1,3 +1,11 @@
+import WelcomeGuide from '../components/WelcomeGuide.jsx'
+import StorageUsage from '../components/StorageUsage.jsx'
+import InstallGuide from '../components/InstallGuide.jsx'
+import {Feedback} from '../components/CommunitySafety.jsx'
+import {useLifestyle} from '../lib/lifestyle.js'
+import Avatar from '../components/Avatar.jsx'
+import NotificationSettings from '../components/NotificationSettings.jsx'
+import {entryTheme,chooseEntryTheme} from '../lib/entry-theme.js'
 import {useOriginNavigate as useNavigate, ReturnButton, useReturn} from '../lib/route-origin.jsx'
 import { useEffect, useRef, useState, forwardRef, useSyncExternalStore } from 'react'
 import {  useParams, useLocation, Navigate } from 'react-router-dom'
@@ -86,6 +94,7 @@ export default function Settings({ page = null, find = null, via = null }) {
   const sync = useStore(s => s.sync)
   const coachLocal = useStore(s => s.coachLocal)
   // Name-and-password sign-in, where the instance offers it (#118).
+  const [guide,setGuide]=useState(false)
   const config = useStore(s => s.config)
   const pwOn = passwordOn(config)
   // What the app is showing, which for a profile that never picked a language is worked out on
@@ -401,12 +410,12 @@ export default function Settings({ page = null, find = null, via = null }) {
   const layout = ['list', 'compact', 'focus'].includes(S.workoutView) ? S.workoutView : 'cards'
   const layoutLabel = { cards: t('Cards'), list: t('List'), compact: t('Compact') }[layout]
   const activeProfile = (S.equipProfiles || []).find(p => p.id === S.activeEquipId)
-  const themeLabel = { dark: t('Dark'), light: t('Light'), system: t('System') }[S.theme || 'dark'] || t('Dark')
+  const themeLabel = { dark: t('Dark'), light: t('Light'), system: t('System') }[entryTheme() || S.theme || 'light'] || t('Dark')
   // The value a root row shows, so most questions are answered without opening the page.
   const preview = {
     workout: () => (S.restSec > 0 ? t('{0} rest', fmtRest(S.restSec)) : t('No rest timer')) + ' · ' + layoutLabel,
     alerts: () => [S.sound ? t('Sound') : null, canVibrate && S.vibrate !== false ? t('Vibrate') : null, S.timerFlash ? t('Flash') : null].filter(Boolean).join(' · ') || t('Silent'),
-    reminders: () => (S.reminder?.on ? (S.reminder.time || DEF.reminder?.time || '') : t('Off')),
+    reminders: () => config?.hosting?.startsWith('cloudflare') ? '设备通知与自由提醒' : (S.reminder?.on ? (S.reminder.time || DEF.reminder?.time || '') : t('Off')),
     plan: () => (mode === 'rotation' ? t('Rotation') : t('Fixed Week')) + ' · ' + shortWeekday(weekStartOf(S) === SUNDAY ? 0 : 1),
     units: () => (S.unit || 'kg') + ' · ' + (LANGS[lang] || lang),
     equipment: () => (S.equipFilterOn && activeProfile ? activeProfile.name : t('Everything')),
@@ -615,7 +624,7 @@ export default function Settings({ page = null, find = null, via = null }) {
       </>
     },
 
-    reminders: () => <NotificationsCard S={S} update={update} toast={toast} />,
+    reminders: () => config?.hosting?.startsWith('cloudflare') ? <NotificationSettings/> : <NotificationsCard S={S} update={update} toast={toast} />,
 
     plan: () => <>
       <Section>
@@ -719,8 +728,8 @@ export default function Settings({ page = null, find = null, via = null }) {
               { value: 'light', icon: 'sun', label: t('Light') },
               { value: 'system', icon: 'gear', label: t('System') },
             ]}
-            value={S.theme || 'dark'}
-            onChange={v => update(s => { s.theme = v })}
+            value={entryTheme() || S.theme || 'light'}
+            onChange={v => {chooseEntryTheme(v);update(s => { s.theme = v })}}
           />
         </Row>
         <div className="lrow" style={{ flexWrap: 'wrap', rowGap: 12, paddingBottom: 14 }}>
@@ -752,6 +761,7 @@ export default function Settings({ page = null, find = null, via = null }) {
         </Row>
       </Section>
       <Section title={t('On Home')}>
+        <Row icon="home" title="自定义首页卡片" accessory="chevron" onClick={()=>nav('/home-layout')}/>
         {/* Membership QR codes on Home (views/CheckIn.jsx); off = no Home card, no route. */}
         <Row icon="qr" iconTint="var(--blue)" title={t('Gym check-in')}
           subtitle="在今日训练旁显示拍照或地点打卡，会员卡可在打卡页单独查看。">
@@ -773,6 +783,8 @@ export default function Settings({ page = null, find = null, via = null }) {
     </>,
 
     data: () => <>
+      <Section><Row icon="cloud" title="同步状态与饮食备份" accessory="chevron" onClick={()=>nav('/data-status')}/></Section>
+      <StorageUsage/>
       <Section title={t('Back up')}>
         <Row icon="share" iconTint="var(--blue)" title={t('Export backup (JSON)')} subtitle={hasMedia ? t('Without photos and videos') : undefined} accessory="chevron" onClick={doExport} />
         {hasMedia && <Row icon="share" iconTint="var(--blue)" title={t('Export with photos & videos (.zip)')} accessory="chevron" onClick={doExportZip} />}
@@ -806,6 +818,7 @@ export default function Settings({ page = null, find = null, via = null }) {
     </>,
 
     about: () => <>
+      <Section><Row icon="clipboard" title="网站初心与新手指南" accessory="chevron" onClick={()=>setGuide(true)}/></Section>{guide&&<WelcomeGuide manual onClose={()=>setGuide(false)}/>}<InstallGuide/><Feedback/>
       {/* Updates. On Android the row is always there: it checks on demand and installs when a
           release is newer (checksum verified, see onUpdateRowClick). On the web the app updates
           with its server, so the row points at the APK for the phone instead. iOS has no APK. */}
@@ -830,6 +843,7 @@ export default function Settings({ page = null, find = null, via = null }) {
       {/* The version, where the support template tells people to look for it. On the phone
           build there is no address bar and no about box, so without this there is no way to tell
           which build you are running, or whether an update actually installed. */}
+
       <div className="dim small sp-version">
         openGym v{__APP_VERSION__} · {t('free & open source (AGPL v3)')}<br />
         <a href="https://github.com/DuarteSantos8/openGym" target="_blank" rel="noopener">{t('Source code')}</a><br />
@@ -915,7 +929,7 @@ export default function Settings({ page = null, find = null, via = null }) {
 
   /* ---------------- the root ---------------- */
   return <SettingsRoot ctx={ctx} preview={preview} open={open} user={user} sync={sync}
-    home={() => nav('/home')} go={(hit) => {
+    home={(path='/home') => nav(path)} go={(hit) => {
       if (hit.page === 'coach') { nav('/coach/setup'); return }
       nav('/settings/' + hit.page, hit.isPage ? undefined : { state: hit.via ? { find: hit.title, via: hit.via } : { find: hit.title } })
     }} />
@@ -923,6 +937,7 @@ export default function Settings({ page = null, find = null, via = null }) {
 
 function SettingsRoot({ ctx, preview, open, user, sync, home, go }) {
   // The router's key for this history entry (what useLocation().key reads), taken once.
+  const profile=useLifestyle(s=>s.profile);
   const [key] = useState(() => window.history.state?.key || null)
   const [q, setQ] = useState(() => (key && lastQuery.key === key ? lastQuery.q : ''))
   const set = v => { lastQuery = { q: v, key }; setQ(v) }
@@ -935,10 +950,9 @@ function SettingsRoot({ ctx, preview, open, user, sync, home, go }) {
     }
     : MOBILE ? { title: t('This phone'), sub: t('All data stays on this phone') }
     : { title: t('Guest'), sub: t('Your data lives on this device. Sign in to sync.') }
-  const initial = user && !DEMO ? String(user.name || '?').trim().charAt(0).toUpperCase() : null
   return <div className="narrow">
     <div className="sp-nav">
-      <ReturnButton fallback="/me/settings"/>
+      <ReturnButton fallback="/me"/>
     </div>
     <h1 className="sp-root-title">{t('Settings')}</h1>
     <div className="sp-search">
@@ -952,7 +966,7 @@ function SettingsRoot({ ctx, preview, open, user, sync, home, go }) {
     </Section> : <div className="sp-empty">{t('No setting matches “{0}”.', q.trim())}</div>) : <>
       <Section>
         <button className="lrow tap sp-acct" onClick={() => open('account')}>
-          <span className={'sp-avatar' + (initial ? ' on' : '')} aria-hidden="true">{initial || <Icon name="personCircle" />}</span>
+          <span className="sp-avatar"><Avatar person={{...profile,nickname:profile.nickname||user?.name}} size={54}/></span>
           <span className="lrow-m"><span className="lrow-t">{acct.title}</span><span className="lrow-s">{acct.sub}</span></span>
           <Icon name="chevronRight" className="lrow-c" />
         </button>
@@ -963,6 +977,7 @@ function SettingsRoot({ ctx, preview, open, user, sync, home, go }) {
             value={preview[id]?.() || null} accessory="chevron" onClick={() => open(id)} className="sp-root-row" />)}
         </Section>
       ))}
+<Section title="个人资料与社区"><Row title="我的个人资料" icon="person" accessory="chevron" onClick={()=>home('/me')}/>{user?.admin&&<Row title="平台管理" icon="people" accessory="chevron" onClick={()=>home('/me/platform')}/>}</Section>
       <div className="dim small sp-version">openGym v{__APP_VERSION__}</div>
     </>}
   </div>

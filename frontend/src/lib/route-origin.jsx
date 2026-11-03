@@ -20,7 +20,7 @@ export function useModalHistory(open,close,blocked=false){
   if(closingSheet&&before.openGymLifeModal===closingSheet.token){clearTimeout(closingSheet.timer);closingSheet=null;window.history.replaceState({...before,openGymLifeModal:token},'',window.location.href)}
   else window.history.pushState({...before,idx:(before.idx||0)+1,openGymLifeModal:token},'',window.location.href)
   const pop=()=>{if(window.history.state?.openGymLifeModal!==token){if(locked.current){const current=window.history.state||{};window.history.pushState({...current,idx:(current.idx||0)+1,openGymLifeModal:token},'',window.location.href)}else latest.current()}}
-  const key=e=>{if(e.key==='Escape')window.history.back()};window.addEventListener('popstate',pop);document.addEventListener('keydown',key)
+  const key=e=>{if(e.key==='Escape'&&window.history.state?.openGymLifeModal===token)window.history.back()};window.addEventListener('popstate',pop);document.addEventListener('keydown',key)
   return()=>{window.removeEventListener('popstate',pop);document.removeEventListener('keydown',key);if(window.history.state?.openGymLifeModal===token){const timer=setTimeout(()=>{if(window.history.state?.openGymLifeModal===token)window.history.back();if(closingSheet?.token===token)closingSheet=null},0);closingSheet={token,timer}}}
  },[!!open])
 }

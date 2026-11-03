@@ -34,7 +34,7 @@
   "vars": {
     "ORIGIN": "https://gym.example.com",
     "RP_ID": "gym.example.com",
-    "INVITE_ONLY": "1",
+    "INVITE_ONLY": "0",
     "ALLOW_GUEST": "0",
     "MEDIA_STORE": "r2",
     "SITE_MEDIA_LIMIT_MB": "8192",

@@ -1,3 +1,4 @@
+import {entryTheme,chooseEntryTheme} from '../lib/entry-theme.js'
 import {invitationCode} from './InviteFriends.jsx'
 import { useStore } from '../store/useStore.js'
 import { useUI } from '../store/useUI.js'
@@ -79,6 +80,7 @@ function RegisterSheet({ close }) {
 export default function Login() {
   const { setUser, adoptProfile, setGuest } = useStore()
   const config = useStore(s => s.config)
+  const [theme,setTheme]=useState(()=>entryTheme()||'light')
   const canGuest = guestAllowed(config)
   const pwOn = passwordOn(config)
   const [signingIn, setSigningIn] = useState(false)
@@ -118,10 +120,12 @@ export default function Login() {
   )
 
   return (
-    <div className="narrow" style={wrap}>
+    <div className="narrow login-redesign" style={wrap}>
+      <div className="entry-themes" aria-label="界面配色">{[['light','浅色'],['dark','深色'],['system','跟随系统']].map(([v,n])=><button key={v} aria-pressed={theme===v} onClick={()=>{setTheme(v);chooseEntryTheme(v)}}>{n}</button>)}</div>
       {head}
+      <p className="entry-kicker">从今天开始，记录自己的进步</p>
       <div className="muted" style={{ marginBottom: 34 }}>{t('Your workouts. Your weights. Your profile.')}</div>
-      {config?.hosting==='cloudflare-r2'&&<p className="life-notice">支持通行密钥或昵称＋密码登录；安卓浏览器无法使用通行密钥时，请选择密码登录或创建新账号。社区视频最多200 MB，个人素材空间1 GB。</p>}{config?.hosting==='cloudflare-free'&&<p className="life-notice">免费试用站点采用通行密钥登录，需使用支持通行密钥的浏览器。单个媒体最多 2 MB；全站媒体容量 100 MB，满后暂停上传，不自动升级付费。</p>}
+      <p className="entry-access">{config?.invite_only?'使用邀请加入健身社区':'免费注册 · 训练、饮食与朋友的日常'}</p>{config?.hosting==='cloudflare-free'&&<p className="life-notice">免费试用站点采用通行密钥登录，需使用支持通行密钥的浏览器。单个媒体最多 2 MB；全站媒体容量 100 MB，满后暂停上传，不自动升级付费。</p>}
       {webauthnOK() ? <>
         <Button variant="primary" icon="fingerprint" onClick={signIn} disabled={signingIn} aria-busy={signingIn}>{signingIn ? '正在请求系统验证…' : t('Sign in with passkey')}</Button>
         {signInMessage&&<p className="life-notice" role="alert">{signInMessage}</p>}
@@ -148,7 +152,7 @@ export default function Login() {
         // so say that plainly instead of offering a local profile that cannot be created.
         : t("This browser doesn't support passkeys, and this instance requires an account. Try a browser or device with passkey support.")}</div>}
       {canGuest && <Button variant="ghost" className="dim" onClick={() => setGuest(true)}>{t('Continue without account')}</Button>}
-      <PasskeyBrowserHelp passwordEnabled={pwOn} unsupported={!webauthnOK()} />
+      <details className="entry-help"><summary>登录与换设备帮助</summary><PasskeyBrowserHelp passwordEnabled={pwOn} unsupported={!webauthnOK()} /></details>
       <div className="dim small" style={{ marginTop: 26, lineHeight: 1.5 }}>{pwOn ? t('Passkeys use {0}. A password works too, where passkeys do not.', bio()) : t('Passkeys use {0}. No passwords to remember.', bio())}<br />{t('Each profile keeps its own plan, workouts & body weight.')}</div>
     </div>
   )

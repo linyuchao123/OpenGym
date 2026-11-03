@@ -9,6 +9,7 @@ const nowISO=()=>new Date().toISOString();
 const random=()=>{const b=crypto.getRandomValues(new Uint8Array(32));return Buffer.from(b).toString('base64url')};
 const digest=async text=>Buffer.from(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))).toString('hex');
 export async function authContext(repo,request,env){
+ const inviteOnly=env.INVITE_ONLY!=='0';
  const snapshot=await repo.load('auth'),rows=snapshot.rows;
  const get=(kind,id)=>{const value=rows.get(kind+':'+id);return value?JSON.parse(value):null};
  const list=kind=>[...rows].filter(([key])=>key.startsWith(kind+':')).map(([,v])=>JSON.parse(v));
@@ -65,13 +66,13 @@ export async function authContext(repo,request,env){
    const name=String(body.name||'').trim().slice(0,40),code=String(body.code||'').trim().toUpperCase();
    if(!name)throw new HttpError(400,'请填写昵称。');
    const first=!list('user').length,invite=get('invite',code);
-   if(first||!inviteAvailable(invite))throw new HttpError(403,'请使用有效的邀请码。','invite');
+   if(first||(inviteOnly&&!inviteAvailable(invite)))throw new HttpError(403,'请使用有效的邀请码。','invite');
    await passwordThrottle(name,'signup');validatePassword(body.password,name);
    const email=body.email?normalizeEmail(body.email):null;if(body.email&&!email)throw new HttpError(400,'邮箱格式不正确。','email-invalid');
    if(passwordHolder(name))throw new HttpError(409,'该昵称已用于密码登录，请换一个昵称。','name-taken');
    if(email&&passwordHolder(email))throw new HttpError(409,'此邮箱已被使用。','email-taken');
-   const u={id:crypto.randomUUID(),name,created:nowISO(),admin:false,sv:0,invitedBy:code,password:await hashPassword(body.password),...(email?{email}:{})};
-   set('user',u.id,u);consumeInvite(invite,u.id,nowISO());set('invite',code,invite);const header=await mint(u);await save();return {user:publicUser(u),$cookie:header};
+   const u={id:crypto.randomUUID(),name,created:nowISO(),admin:false,sv:0,...(inviteAvailable(invite)?{invitedBy:code}:{}),password:await hashPassword(body.password),...(email?{email}:{})};
+   set('user',u.id,u);if(inviteAvailable(invite)){consumeInvite(invite,u.id,nowISO());set('invite',code,invite)}const header=await mint(u);await save();return {user:publicUser(u),$cookie:header};
   }
   if(path==='POST /api/login/password'){
    await passwordThrottle(body.name,'login');const u=passwordHolder(body.name);
@@ -109,7 +110,8 @@ export async function authContext(repo,request,env){
   if(path==='POST /api/register/options'){
    const name=String(body.name||'').trim().slice(0,40),code=String(body.code||'').trim().toUpperCase();if(!name)throw new HttpError(400,'请填写昵称。');
    const first=!list('user').length,invite=get('invite',code);
-   if(first?(!env.BOOTSTRAP_CODE||code!==env.BOOTSTRAP_CODE.toUpperCase()):(!inviteAvailable(invite)))throw new HttpError(403,'请使用有效且仍有名额的邀请码。','invite');
+   if(first?(!env.BOOTSTRAP_CODE||code!==env.BOOTSTRAP_CODE.toUpperCase()):(inviteOnly&&!inviteAvailable(invite)))throw new HttpError(403,'请使用有效且仍有名额的邀请码。','invite');
+   if(!inviteOnly)await repo.throttle('passkey-signup:'+(request.headers.get('cf-connecting-ip')||'local'),10,300);
    const uid=crypto.randomUUID(),options=await generateRegistrationOptions({rpName:'我的健身记录',rpID,userID:Buffer.from(uid),userName:name,userDisplayName:name,attestationType:'none',authenticatorSelection:{residentKey:'required',userVerification:'preferred'}});
    return {cid:await challenge({kind:'register',challenge:options.challenge,uid,name,code,first}),options};
   }
@@ -119,9 +121,9 @@ export async function authContext(repo,request,env){
    const cred=v.registrationInfo.credential;if(get('credential',cred.id))throw new HttpError(409,'这枚通行密钥已经注册。');
    let u=adding?user:linking?get('user',c.uid):null;
    if(linking){const h=hashLinkCode(String(body.code||'')),link=get('link',h);if(!link||link.exp<Date.now()||link.uid!==c.uid||h!==c.lh||!u||u.disabled||link.sv!==(u.sv||0))throw new HttpError(400,'设备码已过期或使用。','link-invalid');drop('link',h)}
-   if(!adding&&!linking){const invite=get('invite',c.code);if(c.first?list('user').length>0:(!inviteAvailable(invite)))throw new HttpError(403,'邀请码已失效。','invite');
-    u={id:c.uid,name:c.name,created:nowISO(),admin:c.first,sv:0,...(!c.first?{invitedBy:c.code}:{})};set('user',u.id,u);
-    if(invite){consumeInvite(invite,u.id,nowISO());set('invite',c.code,invite)}
+   if(!adding&&!linking){const invite=get('invite',c.code);if(c.first?list('user').length>0:(inviteOnly&&!inviteAvailable(invite)))throw new HttpError(403,'邀请码已失效。','invite');
+    u={id:c.uid,name:c.name,created:nowISO(),admin:c.first,sv:0,...(!c.first&&inviteAvailable(invite)?{invitedBy:c.code}:{})};set('user',u.id,u);
+    if(inviteAvailable(invite)){consumeInvite(invite,u.id,nowISO());set('invite',c.code,invite)}
    }
    if(keys(u).length>=10)throw new HttpError(409,'最多添加10枚通行密钥。');
    set('credential',cred.id,{id:cred.id,userId:u.id,publicKey:Buffer.from(cred.publicKey).toString('base64url'),counter:cred.counter||0,transports:body.credential?.response?.transports||[],name:String(body.name||'').slice(0,60),created:nowISO(),lastUsed:nowISO()});
@@ -156,7 +158,7 @@ export async function authContext(repo,request,env){
    const u=need(),id=new URL(request.url).searchParams.get('id'),c=get('credential',id);if(c?.userId!==u.id)throw new HttpError(404,'通行密钥不存在。');if(keys(u).length<=1&&!u.password)throw new HttpError(409,'请保留至少一种登录方式。','last-way-in');await proveOwner(body,u);drop('credential',id);for(const link of list('link'))if(link.uid===u.id)drop('link',link.h);await save();return {ok:true,...passkeys(u)};
   }
   if(path==='GET /api/inviter'){const u=need();return {inviterId:get('invite',u.invitedBy)?.createdBy||null}}
-  if(path==='GET /api/admin/invites'){admin();return {invites:list('invite').map(i=>({...inviteInfo(i),usedByName:get('user',i.usedBy)?.name||null})),invite_only:true}}
+  if(path==='GET /api/admin/invites'){admin();return {invites:list('invite').map(i=>({...inviteInfo(i),usedByName:get('user',i.usedBy)?.name||null})),invite_only:inviteOnly}}
   if(path==='POST /api/admin/invites/new'){
    const u=admin(),code=random().slice(0,24).replace(/[-_]/g,'A').toUpperCase(),invite={code,maxUses:10,createdBy:u.id,note:String(body.note||'').slice(0,60),created:nowISO()};set('invite',code,invite);await save();return {invite};
   }
@@ -170,7 +172,7 @@ export async function authContext(repo,request,env){
   if(path==='POST /api/admin/invites/revoke'){
    admin();const code=String(body.code||'').toUpperCase(),inv=get('invite',code);if(!inv)throw new HttpError(404,'邀请码不存在。');inv.revoked=true;set('invite',code,inv);await save();return {ok:true};
   }
-  if(path==='GET /api/admin/users'){admin();const {results}=await repo.db.prepare("SELECT a.id,json_extract(p.body,'$.profile.nickname') AS nickname,json_extract(p.body,'$.profile.avatar') AS avatar,json_extract(t.body,'$.at') AS lastActiveAt FROM documents a LEFT JOIN documents p ON p.scope='life' AND p.id='people:'||substr(a.id,6) LEFT JOIN documents t ON t.scope='activity' AND t.id=substr(a.id,6) WHERE a.scope='auth' AND a.id LIKE 'user:%'").all();const extras=new Map(results.map(x=>[x.id.slice(5),x]));return {users:list('user').map(u=>({...publicUser(u),created:u.created,disabled:!!u.disabled,password:!!u.password,...(u.email?{email:u.email}:{}),resetUntil:get('reset',u.id)?.exp||null,nickname:extras.get(u.id)?.nickname||u.name,avatar:extras.get(u.id)?.avatar||'',lastActiveAt:extras.get(u.id)?.lastActiveAt||null})),invite_only:true}}
+  if(path==='GET /api/admin/users'){admin();const {results}=await repo.db.prepare("SELECT a.id,json_extract(p.body,'$.profile.nickname') AS nickname,json_extract(p.body,'$.profile.avatar') AS avatar,json_extract(t.body,'$.at') AS lastActiveAt FROM documents a LEFT JOIN documents p ON p.scope='life' AND p.id='people:'||substr(a.id,6) LEFT JOIN documents t ON t.scope='activity' AND t.id=substr(a.id,6) WHERE a.scope='auth' AND a.id LIKE 'user:%'").all();const extras=new Map(results.map(x=>[x.id.slice(5),x]));return {users:list('user').map(u=>({...publicUser(u),created:u.created,disabled:!!u.disabled,password:!!u.password,...(u.email?{email:u.email}:{}),resetUntil:get('reset',u.id)?.exp||null,nickname:extras.get(u.id)?.nickname||u.name,avatar:extras.get(u.id)?.avatar||'',lastActiveAt:extras.get(u.id)?.lastActiveAt||null})),invite_only:inviteOnly}}
   if(path==='POST /api/admin/user/disable'){admin();const u=get('user',body.id);if(!u)throw new HttpError(404,'成员不存在。');if(u.admin)throw new HttpError(400,'不能停用管理员。');u.disabled=body.disabled===true;u.sv=(u.sv||0)+1;set('user',u.id,u);await save();return {ok:true,id:u.id,disabled:u.disabled}}
   return null;
  }

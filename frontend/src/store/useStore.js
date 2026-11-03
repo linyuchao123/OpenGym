@@ -258,6 +258,8 @@ const detectedLang = () => {
 // merged under a saved copy it would claim that every existing profile never chose.
 export function freshState() {
   const s = clone(DEF)
+  s.theme = 'light'
+  s.accent = 'sky'
   s.lang = detectedLang()
   s.langAuto = true
   s.enParens = { zh: false }

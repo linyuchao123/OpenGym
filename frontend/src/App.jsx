@@ -1,3 +1,4 @@
+import {entryTheme} from './lib/entry-theme.js'
 import Author,{Updates} from './views/Author.jsx'
 import {latestBody} from '../../api/shared/body-profile.js'
 import FitnessPlanner from './views/FitnessPlanner.jsx'
@@ -6,7 +7,7 @@ import PlatformUsers from './views/PlatformUsers.jsx'
 import PersonalTools from './views/PersonalTools.jsx'
 import {PostViewer} from './views/Community.jsx'
 import {cacheOwner} from './lib/community-cache.js'
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef } from 'react'
 import { HashRouter, Routes, Route, Navigate, useNavigate, useLocation, useNavigationType } from 'react-router-dom'
 import { useStore } from './store/useStore.js'
 import { useUI } from './store/useUI.js'
@@ -119,18 +120,21 @@ function Shell() {
     exitWorkoutEdit(() => navigate(destination, { replace: true }))
   }, [loc.pathname, loc.search, S.active?.editingWorkoutId, navigate])
   // A preset key, or the user's own colour as '#rrggbb' (lib/accent.js), already checked.
+  const [entryPreference,setEntryPreference]=useState(entryTheme);
+  useEffect(()=>{const sync=()=>setEntryPreference(entryTheme());window.addEventListener('gym-entry-theme',sync);return()=>window.removeEventListener('gym-entry-theme',sync)},[]);
+  const displayTheme=entryPreference||(!user?'light':S.theme);
   const accent = accentValue(S)
-  useEffect(() => { applyPrefs(S.theme, accent) }, [S.theme, accent])
+  useEffect(() => { applyPrefs(displayTheme, accent) }, [displayTheme, accent])
   // 'system' needs to react live if the OS theme flips while the app is open, not just on
   // the next mount — a fixed 'dark'/'light' choice never re-fires this since matchMedia
   // isn't consulted for those.
   useEffect(() => {
-    if (S.theme !== 'system' || !window.matchMedia) return
+    if (displayTheme !== 'system' || !window.matchMedia) return
     const mql = window.matchMedia('(prefers-color-scheme: dark)')
-    const onChange = () => applyPrefs(S.theme, accent)
+    const onChange = () => applyPrefs(displayTheme, accent)
     mql.addEventListener('change', onChange)
     return () => mql.removeEventListener('change', onChange)
-  }, [S.theme, accent])
+  }, [displayTheme, accent])
   // A profile that never picked a language follows the instance default or the browser (#303) —
   // worked out here, on this device, and never written into the synced state (lib/default-lang.js).
   useEffect(()=>{const retry=()=>useLifestyle.getState().flushMeals();window.addEventListener('online',retry);const timer=setInterval(retry,30000);return()=>{window.removeEventListener('online',retry);clearInterval(timer)}},[])
@@ -230,7 +234,7 @@ function Shell() {
             <Routes>
               <Route path="/author" element={<Author/>}/><Route path="/updates" element={<Updates/>}/><Route path="/home" element={<Home />} />
               <Route path="/nutrition" element={<Nutrition key={user?.id || 'guest'} />} />
-              <Route path="/community" element={<Community />} /><Route path="/community/post/:id" element={<PostViewer/>}/><Route path="/me/tools" element={<PersonalTools/>}/><Route path="/me/settings" element={<PersonalTools account/>}/>
+              <Route path="/community" element={<Community />} /><Route path="/community/post/:id" element={<PostViewer/>}/><Route path="/me/tools" element={<PersonalTools/>}/><Route path="/me/settings" element={<Navigate to="/settings" replace/>}/>
               <Route path="/data-status" element={<DataStatus key={user?.id||'guest'}/>}/>
               <Route path="/home-layout" element={<HomeLayout/>}/><Route path="/invite-friends" element={<InviteFriends key={user?.id||'guest'}/>}/>
               <Route path="/notifications" element={<Notifications key={user?.id||'guest'}/>}/><Route path="/challenges" element={<Challenges/>}/><Route path="/member" element={<MemberProfile key={user?.id||'guest'}/>}/>
