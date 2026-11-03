@@ -1,5 +1,5 @@
 // Replace the group image and expiry together when renewing the WeChat invitation.
-export const COMMUNITY_QR_EXPIRES = '2026-11-01T00:00:00+08:00'
+export const COMMUNITY_QR_EXPIRES = '2026-11-10T00:00:00+08:00'
 export const communityQRActive = (now = new Date()) => now.getTime() < new Date(COMMUNITY_QR_EXPIRES).getTime()
 export function timeGreeting(date = new Date()) {
  const hour = date.getHours()
